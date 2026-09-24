@@ -39,8 +39,7 @@ import androidx.glance.text.Text
 import androidx.glance.text.TextStyle
 import com.example.myapplication.data.HaPreferences
 import com.example.myapplication.data.HomeAssistantApi
-import kotlinx.coroutines.async
-import kotlinx.coroutines.supervisorScope
+import kotlinx.coroutines.delay
 
 class HaCompositeWidget : GlanceAppWidget() {
 
@@ -62,27 +61,33 @@ class HaCompositeWidget : GlanceAppWidget() {
 
         if (prefs.isConfigured) {
             try {
-                supervisorScope {
-                    val cameraDef = async { api.fetchCameraSnapshot(prefs.cameraEntity) }
-                    val s1Def = async { api.fetchEntityState(prefs.sensor1Entity) }
-                    val s2Def = async { api.fetchEntityState(prefs.sensor2Entity) }
-                    val s3Def = async { api.fetchEntityState(prefs.sensor3Entity) }
+                // Fetch camera and entities sequentially one by one with fixed delay to avoid server overload
+                cameraBitmap = api.fetchCameraSnapshot(prefs.cameraEntity)
+                delay(50)
 
-                    val b1Def = async { api.fetchEntityState(prefs.button1Entity) }
-                    val b2Def = async { api.fetchEntityState(prefs.button2Entity) }
-                    val b3Def = async { api.fetchEntityState(prefs.button3Entity) }
-                    val b4Def = async { api.fetchEntityState(prefs.button4Entity) }
+                val s1 = api.fetchEntityState(prefs.sensor1Entity)
+                delay(30)
+                val s2 = api.fetchEntityState(prefs.sensor2Entity)
+                delay(30)
+                val s3 = api.fetchEntityState(prefs.sensor3Entity)
+                delay(30)
 
-                    cameraBitmap = cameraDef.await()
-                    s1Val = formatSensorVal(s1Def.await()?.state, prefs.sensor1Unit)
-                    s2Val = formatSensorVal(s2Def.await()?.state, prefs.sensor2Unit)
-                    s3Val = formatSensorVal(s3Def.await()?.state, prefs.sensor3Unit)
+                val b1 = api.fetchEntityState(prefs.button1Entity)
+                delay(30)
+                val b2 = api.fetchEntityState(prefs.button2Entity)
+                delay(30)
+                val b3 = api.fetchEntityState(prefs.button3Entity)
+                delay(30)
+                val b4 = api.fetchEntityState(prefs.button4Entity)
 
-                    b1On = b1Def.await()?.state == "on"
-                    b2On = b2Def.await()?.state == "on"
-                    b3On = b3Def.await()?.state == "on"
-                    b4On = b4Def.await()?.state == "on"
-                }
+                s1Val = formatSensorVal(s1?.state, prefs.sensor1Unit)
+                s2Val = formatSensorVal(s2?.state, prefs.sensor2Unit)
+                s3Val = formatSensorVal(s3?.state, prefs.sensor3Unit)
+
+                b1On = b1?.state == "on"
+                b2On = b2?.state == "on"
+                b3On = b3?.state == "on"
+                b4On = b4?.state == "on"
             } catch (e: Exception) {
                 e.printStackTrace()
             }
