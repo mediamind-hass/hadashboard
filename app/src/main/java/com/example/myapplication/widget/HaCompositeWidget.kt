@@ -7,6 +7,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.isSpecified
 import androidx.compose.ui.unit.sp
+import androidx.datastore.preferences.core.Preferences
 import androidx.glance.Button
 import androidx.glance.ButtonDefaults
 import androidx.glance.GlanceId
@@ -22,6 +23,7 @@ import androidx.glance.appwidget.cornerRadius
 import androidx.glance.appwidget.provideContent
 import androidx.glance.background
 import androidx.glance.color.ColorProvider
+import androidx.glance.currentState
 import androidx.glance.layout.Alignment
 import androidx.glance.layout.Box
 import androidx.glance.layout.Column
@@ -125,8 +127,8 @@ class HaCompositeWidget : GlanceAppWidget() {
             WidgetContent(
                 isConfigured = prefs.isConfigured,
                 requireConfirmation = prefs.requireConfirmation,
-                confirmingId = prefs.confirmingEntityId,
-                confirmingTs = prefs.confirmingTimestamp,
+                fallbackConfirmingId = prefs.confirmingEntityId,
+                fallbackConfirmingTs = prefs.confirmingTimestamp,
                 cameraBitmap = cameraBitmap,
                 s1Name = prefs.sensor1Name,
                 s1Val = s1Val,
@@ -163,8 +165,8 @@ class HaCompositeWidget : GlanceAppWidget() {
     private fun WidgetContent(
         isConfigured: Boolean,
         requireConfirmation: Boolean,
-        confirmingId: String,
-        confirmingTs: Long,
+        fallbackConfirmingId: String,
+        fallbackConfirmingTs: Long,
         cameraBitmap: Bitmap?,
         s1Name: String, s1Val: String,
         s2Name: String, s2Val: String,
@@ -176,6 +178,11 @@ class HaCompositeWidget : GlanceAppWidget() {
     ) {
         val size = LocalSize.current
         val totalWidth = if (size.width.isSpecified && size.width > 0.dp) size.width else 250.dp
+
+        // Read Glance-native state DataStore preferences
+        val glancePrefs = currentState<Preferences>()
+        val activeConfirmingId = glancePrefs[WidgetKeys.PREF_CONFIRM_ENTITY] ?: fallbackConfirmingId
+        val activeConfirmingTs = glancePrefs[WidgetKeys.PREF_CONFIRM_TS] ?: fallbackConfirmingTs
 
         // Calculate exact 65% width X from actual widget size provided by SizeMode.Exact
         val cameraWidth = (totalWidth * 0.65f) - 6.dp
@@ -312,8 +319,8 @@ class HaCompositeWidget : GlanceAppWidget() {
                     entityId = b1Entity,
                     name = b1Name,
                     isOn = b1On,
-                    confirmingId = confirmingId,
-                    confirmingTs = confirmingTs,
+                    confirmingId = activeConfirmingId,
+                    confirmingTs = activeConfirmingTs,
                     isConfirmingEnabled = requireConfirmation,
                     activeBg = activeBtnBg,
                     inactiveBg = inactiveBtnBg,
@@ -325,8 +332,8 @@ class HaCompositeWidget : GlanceAppWidget() {
                     entityId = b2Entity,
                     name = b2Name,
                     isOn = b2On,
-                    confirmingId = confirmingId,
-                    confirmingTs = confirmingTs,
+                    confirmingId = activeConfirmingId,
+                    confirmingTs = activeConfirmingTs,
                     isConfirmingEnabled = requireConfirmation,
                     activeBg = activeBtnBg,
                     inactiveBg = inactiveBtnBg,
@@ -338,8 +345,8 @@ class HaCompositeWidget : GlanceAppWidget() {
                     entityId = b3Entity,
                     name = b3Name,
                     isOn = b3On,
-                    confirmingId = confirmingId,
-                    confirmingTs = confirmingTs,
+                    confirmingId = activeConfirmingId,
+                    confirmingTs = activeConfirmingTs,
                     isConfirmingEnabled = requireConfirmation,
                     activeBg = activeBtnBg,
                     inactiveBg = inactiveBtnBg,
@@ -351,8 +358,8 @@ class HaCompositeWidget : GlanceAppWidget() {
                     entityId = b4Entity,
                     name = b4Name,
                     isOn = b4On,
-                    confirmingId = confirmingId,
-                    confirmingTs = confirmingTs,
+                    confirmingId = activeConfirmingId,
+                    confirmingTs = activeConfirmingTs,
                     isConfirmingEnabled = requireConfirmation,
                     activeBg = activeBtnBg,
                     inactiveBg = inactiveBtnBg,
@@ -416,8 +423,8 @@ class HaCompositeWidget : GlanceAppWidget() {
         val now = System.currentTimeMillis()
         val isPendingConfirm = isConfirmingEnabled &&
                 confirmingId.isNotBlank() &&
-                confirmingId == entityId &&
-                (now - confirmingTs) < 5000
+                (confirmingId == entityId || (entityId.isBlank() && confirmingId == "btn_generic_action") || confirmingId == "btn_generic_action") &&
+                (now - confirmingTs) < 6000
 
         val bg = if (isPendingConfirm) Color(0xFFFF9800) else (if (isOn) activeBg else inactiveBg)
         val prefix = if (isPendingConfirm) "⚠️" else (if (isOn) "⚡" else "○")
