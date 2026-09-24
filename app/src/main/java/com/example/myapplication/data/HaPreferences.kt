@@ -20,14 +20,18 @@ class HaPreferences(context: Context) {
         get() = prefs.getBoolean("require_confirmation", true)
         set(value) = prefs.edit().putBoolean("require_confirmation", value).apply()
 
-    // Temporary confirmation state
+    // Temporary confirmation state (using commit for immediate synchronous write across IPC)
     var confirmingEntityId: String
         get() = prefs.getString("confirming_entity_id", "") ?: ""
-        set(value) = prefs.edit().putString("confirming_entity_id", value).apply()
+        set(value) {
+            prefs.edit().putString("confirming_entity_id", value).commit()
+        }
 
     var confirmingTimestamp: Long
         get() = prefs.getLong("confirming_timestamp", 0L)
-        set(value) = prefs.edit().putLong("confirming_timestamp", value).apply()
+        set(value) {
+            prefs.edit().putLong("confirming_timestamp", value).commit()
+        }
 
     // Camera
     var cameraEntity: String
