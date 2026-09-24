@@ -5,6 +5,7 @@ import android.graphics.Bitmap
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.isSpecified
 import androidx.compose.ui.unit.sp
 import androidx.glance.Button
 import androidx.glance.ButtonDefaults
@@ -174,7 +175,7 @@ class HaCompositeWidget : GlanceAppWidget() {
         b4Entity: String, b4Name: String, b4On: Boolean
     ) {
         val size = LocalSize.current
-        val totalWidth = size.width
+        val totalWidth = if (size.width.isSpecified && size.width > 0.dp) size.width else 250.dp
 
         // Calculate exact 65% width X from actual widget size provided by SizeMode.Exact
         val cameraWidth = (totalWidth * 0.65f) - 6.dp

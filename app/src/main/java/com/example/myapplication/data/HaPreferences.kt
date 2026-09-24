@@ -20,14 +20,12 @@ class HaPreferences(context: Context) {
         get() = prefs.getBoolean("require_confirmation", true)
         set(value) = prefs.edit().putBoolean("require_confirmation", value).apply()
 
-    // Temporary confirmation state with auto-expiration (5 seconds)
+    // Temporary confirmation state (safe in-memory expiration check without recursive disk edit)
     var confirmingEntityId: String
         get() {
             val id = prefs.getString("confirming_entity_id", "") ?: ""
             val ts = prefs.getLong("confirming_timestamp", 0L)
             if (id.isNotBlank() && (System.currentTimeMillis() - ts > 5000)) {
-                // Auto-expire confirmation state after 5 seconds
-                prefs.edit().putString("confirming_entity_id", "").putLong("confirming_timestamp", 0L).apply()
                 return ""
             }
             return id
