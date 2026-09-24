@@ -1,0 +1,4 @@
+<resources>
+    <string name="app_name">HADashboard</string>
+    <string name="widget_description">Widget unificato Home Assistant con Fotocamera, Sensori e Pulsanti</string>
+</resources>
