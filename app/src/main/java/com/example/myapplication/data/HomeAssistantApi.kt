@@ -2,6 +2,7 @@ package com.example.myapplication.data
 
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import android.util.Log
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.MediaType.Companion.toMediaType
@@ -20,16 +21,17 @@ data class EntityStateResult(
 
 class HomeAssistantApi(private val prefs: HaPreferences) {
 
-    private val client = OkHttpClient.Builder()
-        .connectTimeout(4, TimeUnit.SECONDS)
-        .readTimeout(5, TimeUnit.SECONDS)
-        .build()
+    companion object {
+        private val client = OkHttpClient.Builder()
+            .connectTimeout(15, TimeUnit.SECONDS)
+            .readTimeout(15, TimeUnit.SECONDS)
+            .build()
+    }
 
     private fun buildRequest(path: String): Request.Builder? {
         val serverUrl = prefs.serverUrl
         val token = prefs.token
         if (serverUrl.isBlank() || token.isBlank()) return null
-
         val url = if (path.startsWith("http")) path else "$serverUrl$path"
         return Request.Builder()
             .url(url)
@@ -43,24 +45,18 @@ class HomeAssistantApi(private val prefs: HaPreferences) {
         val entityId = if (!trimmed.contains(".")) "sensor.$trimmed" else trimmed
         try {
             val reqBuilder = buildRequest("/api/states/$entityId") ?: return@withContext null
-            val response = client.newCall(reqBuilder.get().build()).execute()
-            response.use {
-                if (!it.isSuccessful) return@withContext null
-                val bodyStr = it.body?.string() ?: return@withContext null
+            client.newCall(reqBuilder.get().build()).execute().use { response ->
+                if (!response.isSuccessful) return@withContext null
+                val bodyStr = response.body?.string() ?: return@withContext null
                 val json = JSONObject(bodyStr)
                 val state = json.optString("state", "N/A")
                 val attributes = json.optJSONObject("attributes")
-                val unit = if (attributes?.has("unit_of_measurement") == true) attributes.optString("unit_of_measurement") else null
-                val friendlyName = if (attributes?.has("friendly_name") == true) attributes.optString("friendly_name") else null
-                EntityStateResult(
-                    entityId = entityId,
-                    state = state,
-                    unitOfMeasurement = unit,
-                    friendlyName = friendlyName
-                )
+                val unit = attributes?.optString("unit_of_measurement")
+                val friendlyName = attributes?.optString("friendly_name")
+                EntityStateResult(entityId, state, unit, friendlyName)
             }
         } catch (e: Exception) {
-            e.printStackTrace()
+            Log.w("HomeAssistantApi", "Error fetching entity state for $entityId: ${e.message}")
             null
         }
     }
@@ -69,22 +65,23 @@ class HomeAssistantApi(private val prefs: HaPreferences) {
         val trimmed = rawEntityId.trim()
         if (trimmed.isBlank()) return@withContext false
         val entityId = if (!trimmed.contains(".")) "switch.$trimmed" else trimmed
+        val parts = entityId.split(".", limit = 2)
+        if (parts.size < 2) return@withContext false
+        val domain = parts[0]
+
+        val serviceToCall = when (domain) {
+            "button" -> "press"
+            "script", "scene" -> "turn_on"
+            else -> actionService
+        }
+
         try {
-            val parts = entityId.split(".", limit = 2)
-            if (parts.size < 2) return@withContext false
-            val domain = parts[0]
-
-            val jsonBody = JSONObject().apply {
-                put("entity_id", entityId)
-            }
-            val mediaType = "application/json; charset=utf-8".toMediaType()
-            val requestBody = jsonBody.toString().toRequestBody(mediaType)
-
-            val reqBuilder = buildRequest("/api/services/$domain/$actionService") ?: return@withContext false
-            val response = client.newCall(reqBuilder.post(requestBody).build()).execute()
-            response.use { it.isSuccessful }
+            val jsonBody = JSONObject().apply { put("entity_id", entityId) }
+            val requestBody = jsonBody.toString().toRequestBody("application/json; charset=utf-8".toMediaType())
+            val reqBuilder = buildRequest("/api/services/$domain/$serviceToCall") ?: return@withContext false
+            client.newCall(reqBuilder.post(requestBody).build()).execute().use { it.isSuccessful }
         } catch (e: Exception) {
-            e.printStackTrace()
+            Log.w("HomeAssistantApi", "Error calling service for $entityId: ${e.message}")
             false
         }
     }
@@ -95,43 +92,15 @@ class HomeAssistantApi(private val prefs: HaPreferences) {
         }
         if (cameraEntityId.isBlank()) return@withContext null
 
-        // Attempt 1: Direct /api/camera_proxy/$cameraEntityId
-        val directBitmap = downloadImageFromPath("/api/camera_proxy/$cameraEntityId")
-        if (directBitmap != null) return@withContext directBitmap
-
-        // Attempt 2: Fetch /api/states/$cameraEntityId to read 'entity_picture' attribute
         try {
-            val reqBuilder = buildRequest("/api/states/$cameraEntityId") ?: return@withContext null
-            val response = client.newCall(reqBuilder.get().build()).execute()
-            response.use {
-                if (it.isSuccessful) {
-                    val bodyStr = it.body?.string() ?: return@use
-                    val json = JSONObject(bodyStr)
-                    val attributes = json.optJSONObject("attributes")
-                    val entityPicture = if (attributes?.has("entity_picture") == true) attributes.optString("entity_picture") else null
-                    if (!entityPicture.isNullOrBlank()) {
-                        return@withContext downloadImageFromPath(entityPicture)
-                    }
-                }
-            }
-        } catch (e: Exception) {
-            e.printStackTrace()
-        }
+            val reqBuilder = buildRequest("/api/camera_proxy/$cameraEntityId") ?: return@withContext null
+            client.newCall(reqBuilder.get().build()).execute().use { response ->
+                if (!response.isSuccessful) return@withContext null
+                val bytes = response.body?.bytes() ?: return@withContext null
+                if (bytes.isEmpty()) return@withContext null
+                val rawBitmap = BitmapFactory.decodeByteArray(bytes, 0, bytes.size) ?: return@withContext null
 
-        null
-    }
-
-    private fun downloadImageFromPath(path: String): Bitmap? {
-        return try {
-            val reqBuilder = buildRequest(path) ?: return null
-            val response = client.newCall(reqBuilder.get().build()).execute()
-            response.use {
-                if (!it.isSuccessful) return null
-                val bytes = it.body?.bytes() ?: return null
-                if (bytes.isEmpty()) return null
-                val rawBitmap = BitmapFactory.decodeByteArray(bytes, 0, bytes.size) ?: return null
-
-                // Downscale bitmap for RemoteViews Binder transaction limits (max 400x250)
+                // Downscale for RemoteViews limit (max 400x250)
                 val maxWidth = 400
                 val maxHeight = 250
                 if (rawBitmap.width > maxWidth || rawBitmap.height > maxHeight) {
@@ -144,7 +113,7 @@ class HomeAssistantApi(private val prefs: HaPreferences) {
                 }
             }
         } catch (e: Exception) {
-            e.printStackTrace()
+            Log.w("HomeAssistantApi", "Error fetching camera snapshot for $cameraEntityId: ${e.message}")
             null
         }
     }
@@ -157,16 +126,11 @@ class HomeAssistantApi(private val prefs: HaPreferences) {
 
         try {
             val reqBuilder = buildRequest("/api/") ?: return@withContext "URL non valido"
-            val response = client.newCall(reqBuilder.get().build()).execute()
-            response.use {
-                if (it.isSuccessful) {
-                    "OK"
-                } else {
-                    "Errore HTTP ${it.code}: ${it.message}"
-                }
+            client.newCall(reqBuilder.get().build()).execute().use { response ->
+                if (response.isSuccessful) "OK" else "Errore HTTP ${response.code}"
             }
         } catch (e: Exception) {
-            "Eccezione di Rete: ${e.localizedMessage ?: e.message}"
+            "Errore di Connessione: ${e.localizedMessage ?: e.message}"
         }
     }
 }

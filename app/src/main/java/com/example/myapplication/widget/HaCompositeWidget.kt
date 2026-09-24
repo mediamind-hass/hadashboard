@@ -7,7 +7,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.isSpecified
 import androidx.compose.ui.unit.sp
-import androidx.datastore.preferences.core.Preferences
 import androidx.glance.Button
 import androidx.glance.ButtonDefaults
 import androidx.glance.GlanceId
@@ -15,7 +14,7 @@ import androidx.glance.GlanceModifier
 import androidx.glance.Image
 import androidx.glance.ImageProvider
 import androidx.glance.LocalSize
-import androidx.glance.action.actionParametersOf
+import androidx.glance.action.Action
 import androidx.glance.appwidget.GlanceAppWidget
 import androidx.glance.appwidget.SizeMode
 import androidx.glance.appwidget.action.actionRunCallback
@@ -23,7 +22,6 @@ import androidx.glance.appwidget.cornerRadius
 import androidx.glance.appwidget.provideContent
 import androidx.glance.background
 import androidx.glance.color.ColorProvider
-import androidx.glance.currentState
 import androidx.glance.layout.Alignment
 import androidx.glance.layout.Box
 import androidx.glance.layout.Column
@@ -67,43 +65,43 @@ class HaCompositeWidget : GlanceAppWidget() {
             try {
                 supervisorScope {
                     val cameraDef = async {
-                        withTimeoutOrNull(3000) {
+                        withTimeoutOrNull(6000) {
                             try { api.fetchCameraSnapshot(prefs.cameraEntity) } catch (_: Exception) { null }
                         }
                     }
                     val s1Def = async {
-                        withTimeoutOrNull(3000) {
+                        withTimeoutOrNull(6000) {
                             try { api.fetchEntityState(prefs.sensor1Entity) } catch (_: Exception) { null }
                         }
                     }
                     val s2Def = async {
-                        withTimeoutOrNull(3000) {
+                        withTimeoutOrNull(6000) {
                             try { api.fetchEntityState(prefs.sensor2Entity) } catch (_: Exception) { null }
                         }
                     }
                     val s3Def = async {
-                        withTimeoutOrNull(3000) {
+                        withTimeoutOrNull(6000) {
                             try { api.fetchEntityState(prefs.sensor3Entity) } catch (_: Exception) { null }
                         }
                     }
 
                     val b1Def = async {
-                        withTimeoutOrNull(3000) {
+                        withTimeoutOrNull(6000) {
                             try { api.fetchEntityState(prefs.button1Entity) } catch (_: Exception) { null }
                         }
                     }
                     val b2Def = async {
-                        withTimeoutOrNull(3000) {
+                        withTimeoutOrNull(6000) {
                             try { api.fetchEntityState(prefs.button2Entity) } catch (_: Exception) { null }
                         }
                     }
                     val b3Def = async {
-                        withTimeoutOrNull(3000) {
+                        withTimeoutOrNull(6000) {
                             try { api.fetchEntityState(prefs.button3Entity) } catch (_: Exception) { null }
                         }
                     }
                     val b4Def = async {
-                        withTimeoutOrNull(3000) {
+                        withTimeoutOrNull(6000) {
                             try { api.fetchEntityState(prefs.button4Entity) } catch (_: Exception) { null }
                         }
                     }
@@ -126,9 +124,6 @@ class HaCompositeWidget : GlanceAppWidget() {
         provideContent {
             WidgetContent(
                 isConfigured = prefs.isConfigured,
-                requireConfirmation = prefs.requireConfirmation,
-                fallbackConfirmingId = prefs.confirmingEntityId,
-                fallbackConfirmingTs = prefs.confirmingTimestamp,
                 cameraBitmap = cameraBitmap,
                 s1Name = prefs.sensor1Name,
                 s1Val = s1Val,
@@ -136,16 +131,12 @@ class HaCompositeWidget : GlanceAppWidget() {
                 s2Val = s2Val,
                 s3Name = prefs.sensor3Name,
                 s3Val = s3Val,
-                b1Entity = prefs.button1Entity,
                 b1Name = prefs.button1Name,
                 b1On = b1On,
-                b2Entity = prefs.button2Entity,
                 b2Name = prefs.button2Name,
                 b2On = b2On,
-                b3Entity = prefs.button3Entity,
                 b3Name = prefs.button3Name,
                 b3On = b3On,
-                b4Entity = prefs.button4Entity,
                 b4Name = prefs.button4Name,
                 b4On = b4On
             )
@@ -164,25 +155,17 @@ class HaCompositeWidget : GlanceAppWidget() {
     @Composable
     private fun WidgetContent(
         isConfigured: Boolean,
-        requireConfirmation: Boolean,
-        fallbackConfirmingId: String,
-        fallbackConfirmingTs: Long,
         cameraBitmap: Bitmap?,
         s1Name: String, s1Val: String,
         s2Name: String, s2Val: String,
         s3Name: String, s3Val: String,
-        b1Entity: String, b1Name: String, b1On: Boolean,
-        b2Entity: String, b2Name: String, b2On: Boolean,
-        b3Entity: String, b3Name: String, b3On: Boolean,
-        b4Entity: String, b4Name: String, b4On: Boolean
+        b1Name: String, b1On: Boolean,
+        b2Name: String, b2On: Boolean,
+        b3Name: String, b3On: Boolean,
+        b4Name: String, b4On: Boolean
     ) {
         val size = LocalSize.current
         val totalWidth = if (size.width.isSpecified && size.width > 0.dp) size.width else 250.dp
-
-        // Read Glance-native state DataStore preferences
-        val glancePrefs = currentState<Preferences>()
-        val activeConfirmingId = glancePrefs[WidgetKeys.PREF_CONFIRM_ENTITY] ?: fallbackConfirmingId
-        val activeConfirmingTs = glancePrefs[WidgetKeys.PREF_CONFIRM_TS] ?: fallbackConfirmingTs
 
         // Calculate exact 65% width X from actual widget size provided by SizeMode.Exact
         val cameraWidth = (totalWidth * 0.65f) - 6.dp
@@ -316,54 +299,42 @@ class HaCompositeWidget : GlanceAppWidget() {
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 ActionButton(
-                    entityId = b1Entity,
                     name = b1Name,
                     isOn = b1On,
-                    confirmingId = activeConfirmingId,
-                    confirmingTs = activeConfirmingTs,
-                    isConfirmingEnabled = requireConfirmation,
                     activeBg = activeBtnBg,
                     inactiveBg = inactiveBtnBg,
                     textColor = textColor,
+                    onClickAction = actionRunCallback<Button1Action>(),
                     modifier = GlanceModifier.defaultWeight().fillMaxHeight()
                 )
                 Spacer(modifier = GlanceModifier.width(2.dp))
                 ActionButton(
-                    entityId = b2Entity,
                     name = b2Name,
                     isOn = b2On,
-                    confirmingId = activeConfirmingId,
-                    confirmingTs = activeConfirmingTs,
-                    isConfirmingEnabled = requireConfirmation,
                     activeBg = activeBtnBg,
                     inactiveBg = inactiveBtnBg,
                     textColor = textColor,
+                    onClickAction = actionRunCallback<Button2Action>(),
                     modifier = GlanceModifier.defaultWeight().fillMaxHeight()
                 )
                 Spacer(modifier = GlanceModifier.width(2.dp))
                 ActionButton(
-                    entityId = b3Entity,
                     name = b3Name,
                     isOn = b3On,
-                    confirmingId = activeConfirmingId,
-                    confirmingTs = activeConfirmingTs,
-                    isConfirmingEnabled = requireConfirmation,
                     activeBg = activeBtnBg,
                     inactiveBg = inactiveBtnBg,
                     textColor = textColor,
+                    onClickAction = actionRunCallback<Button3Action>(),
                     modifier = GlanceModifier.defaultWeight().fillMaxHeight()
                 )
                 Spacer(modifier = GlanceModifier.width(2.dp))
                 ActionButton(
-                    entityId = b4Entity,
                     name = b4Name,
                     isOn = b4On,
-                    confirmingId = activeConfirmingId,
-                    confirmingTs = activeConfirmingTs,
-                    isConfirmingEnabled = requireConfirmation,
                     activeBg = activeBtnBg,
                     inactiveBg = inactiveBtnBg,
                     textColor = textColor,
+                    onClickAction = actionRunCallback<Button4Action>(),
                     modifier = GlanceModifier.defaultWeight().fillMaxHeight()
                 )
             }
@@ -409,32 +380,20 @@ class HaCompositeWidget : GlanceAppWidget() {
 
     @Composable
     private fun ActionButton(
-        entityId: String,
         name: String,
         isOn: Boolean,
-        confirmingId: String,
-        confirmingTs: Long,
-        isConfirmingEnabled: Boolean,
         activeBg: Color,
         inactiveBg: Color,
         textColor: Color,
+        onClickAction: Action,
         modifier: GlanceModifier
     ) {
-        val now = System.currentTimeMillis()
-        val isPendingConfirm = isConfirmingEnabled &&
-                confirmingId.isNotBlank() &&
-                (confirmingId == entityId || (entityId.isBlank() && confirmingId == "btn_generic_action") || confirmingId == "btn_generic_action") &&
-                (now - confirmingTs) < 6000
-
-        val bg = if (isPendingConfirm) Color(0xFFFF9800) else (if (isOn) activeBg else inactiveBg)
-        val prefix = if (isPendingConfirm) "⚠️" else (if (isOn) "⚡" else "○")
-        val displayText = if (isPendingConfirm) "⚠️ Confermi?" else (if (name.isNotBlank()) "$prefix $name" else prefix)
+        val bg = if (isOn) activeBg else inactiveBg
+        val displayText = if (name.isNotBlank()) name else "Btn"
 
         Button(
             text = displayText,
-            onClick = actionRunCallback<ToggleEntityAction>(
-                actionParametersOf(ToggleEntityAction.KEY_ENTITY_ID to entityId)
-            ),
+            onClick = onClickAction,
             modifier = modifier.cornerRadius(6.dp),
             colors = ButtonDefaults.buttonColors(
                 backgroundColor = ColorProvider(day = bg, night = bg),

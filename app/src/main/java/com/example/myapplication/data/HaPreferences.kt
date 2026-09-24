@@ -9,36 +9,17 @@ class HaPreferences(context: Context) {
 
     var serverUrl: String
         get() = prefs.getString("server_url", "") ?: ""
-        set(value) = prefs.edit().putString("server_url", value.trimEnd('/')).apply()
+        set(value) {
+            var trimmed = value.trim().trimEnd('/')
+            if (trimmed.isNotBlank() && !trimmed.startsWith("http://") && !trimmed.startsWith("https://")) {
+                trimmed = "http://$trimmed"
+            }
+            prefs.edit().putString("server_url", trimmed).apply()
+        }
 
     var token: String
         get() = prefs.getString("token", "") ?: ""
         set(value) = prefs.edit().putString("token", value.trim()).apply()
-
-    // Confirmation Setting
-    var requireConfirmation: Boolean
-        get() = prefs.getBoolean("require_confirmation", true)
-        set(value) = prefs.edit().putBoolean("require_confirmation", value).apply()
-
-    // Temporary confirmation state (safe in-memory expiration check without recursive disk edit)
-    var confirmingEntityId: String
-        get() {
-            val id = prefs.getString("confirming_entity_id", "") ?: ""
-            val ts = prefs.getLong("confirming_timestamp", 0L)
-            if (id.isNotBlank() && (System.currentTimeMillis() - ts > 5000)) {
-                return ""
-            }
-            return id
-        }
-        set(value) {
-            prefs.edit().putString("confirming_entity_id", value).commit()
-        }
-
-    var confirmingTimestamp: Long
-        get() = prefs.getLong("confirming_timestamp", 0L)
-        set(value) {
-            prefs.edit().putLong("confirming_timestamp", value).commit()
-        }
 
     // Camera
     var cameraEntity: String
