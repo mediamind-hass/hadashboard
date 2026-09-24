@@ -21,8 +21,8 @@ data class EntityStateResult(
 class HomeAssistantApi(private val prefs: HaPreferences) {
 
     private val client = OkHttpClient.Builder()
-        .connectTimeout(5, TimeUnit.SECONDS)
-        .readTimeout(7, TimeUnit.SECONDS)
+        .connectTimeout(4, TimeUnit.SECONDS)
+        .readTimeout(5, TimeUnit.SECONDS)
         .build()
 
     private fun buildRequest(path: String): Request.Builder? {
@@ -149,13 +149,24 @@ class HomeAssistantApi(private val prefs: HaPreferences) {
         }
     }
 
-    suspend fun testConnection(): Boolean = withContext(Dispatchers.IO) {
+    suspend fun testConnectionDetailed(): String = withContext(Dispatchers.IO) {
+        val serverUrl = prefs.serverUrl
+        val token = prefs.token
+        if (serverUrl.isBlank()) return@withContext "URL Server vuoto"
+        if (token.isBlank()) return@withContext "Token Bearer vuoto"
+
         try {
-            val reqBuilder = buildRequest("/api/") ?: return@withContext false
+            val reqBuilder = buildRequest("/api/") ?: return@withContext "URL non valido"
             val response = client.newCall(reqBuilder.get().build()).execute()
-            response.use { it.isSuccessful }
+            response.use {
+                if (it.isSuccessful) {
+                    "OK"
+                } else {
+                    "Errore HTTP ${it.code}: ${it.message}"
+                }
+            }
         } catch (e: Exception) {
-            false
+            "Eccezione di Rete: ${e.localizedMessage ?: e.message}"
         }
     }
 }

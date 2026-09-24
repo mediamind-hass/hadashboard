@@ -275,14 +275,14 @@ fun ConfigurationScreen(modifier: Modifier = Modifier) {
                     prefs.button4Name = b4Name
 
                     val api = HomeAssistantApi(prefs)
-                    val ok = api.testConnection()
+                    val resultMsg = api.testConnectionDetailed()
                     isTesting = false
 
-                    if (ok) {
+                    if (resultMsg == "OK") {
                         Toast.makeText(context, "Connessione riuscita! Impostazioni salvate.", Toast.LENGTH_LONG).show()
                         HaCompositeWidget().updateAll(context)
                     } else {
-                        Toast.makeText(context, "Errore connessione Home Assistant. Verifica URL e Token.", Toast.LENGTH_LONG).show()
+                        Toast.makeText(context, "Connessione fallita: $resultMsg", Toast.LENGTH_LONG).show()
                     }
                 }
             },
