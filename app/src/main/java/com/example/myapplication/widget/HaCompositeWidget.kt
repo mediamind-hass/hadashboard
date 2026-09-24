@@ -41,7 +41,6 @@ import com.example.myapplication.data.HaPreferences
 import com.example.myapplication.data.HomeAssistantApi
 import kotlinx.coroutines.async
 import kotlinx.coroutines.supervisorScope
-import kotlinx.coroutines.withTimeoutOrNull
 
 class HaCompositeWidget : GlanceAppWidget() {
 
@@ -64,47 +63,15 @@ class HaCompositeWidget : GlanceAppWidget() {
         if (prefs.isConfigured) {
             try {
                 supervisorScope {
-                    val cameraDef = async {
-                        withTimeoutOrNull(6000) {
-                            try { api.fetchCameraSnapshot(prefs.cameraEntity) } catch (_: Exception) { null }
-                        }
-                    }
-                    val s1Def = async {
-                        withTimeoutOrNull(6000) {
-                            try { api.fetchEntityState(prefs.sensor1Entity) } catch (_: Exception) { null }
-                        }
-                    }
-                    val s2Def = async {
-                        withTimeoutOrNull(6000) {
-                            try { api.fetchEntityState(prefs.sensor2Entity) } catch (_: Exception) { null }
-                        }
-                    }
-                    val s3Def = async {
-                        withTimeoutOrNull(6000) {
-                            try { api.fetchEntityState(prefs.sensor3Entity) } catch (_: Exception) { null }
-                        }
-                    }
+                    val cameraDef = async { api.fetchCameraSnapshot(prefs.cameraEntity) }
+                    val s1Def = async { api.fetchEntityState(prefs.sensor1Entity) }
+                    val s2Def = async { api.fetchEntityState(prefs.sensor2Entity) }
+                    val s3Def = async { api.fetchEntityState(prefs.sensor3Entity) }
 
-                    val b1Def = async {
-                        withTimeoutOrNull(6000) {
-                            try { api.fetchEntityState(prefs.button1Entity) } catch (_: Exception) { null }
-                        }
-                    }
-                    val b2Def = async {
-                        withTimeoutOrNull(6000) {
-                            try { api.fetchEntityState(prefs.button2Entity) } catch (_: Exception) { null }
-                        }
-                    }
-                    val b3Def = async {
-                        withTimeoutOrNull(6000) {
-                            try { api.fetchEntityState(prefs.button3Entity) } catch (_: Exception) { null }
-                        }
-                    }
-                    val b4Def = async {
-                        withTimeoutOrNull(6000) {
-                            try { api.fetchEntityState(prefs.button4Entity) } catch (_: Exception) { null }
-                        }
-                    }
+                    val b1Def = async { api.fetchEntityState(prefs.button1Entity) }
+                    val b2Def = async { api.fetchEntityState(prefs.button2Entity) }
+                    val b3Def = async { api.fetchEntityState(prefs.button3Entity) }
+                    val b4Def = async { api.fetchEntityState(prefs.button4Entity) }
 
                     cameraBitmap = cameraDef.await()
                     s1Val = formatSensorVal(s1Def.await()?.state, prefs.sensor1Unit)
