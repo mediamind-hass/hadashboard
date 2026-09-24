@@ -45,28 +45,36 @@ class HomeAssistantApi(private val prefs: HaPreferences) {
     }
 
     suspend fun fetchEntityState(rawEntityId: String): EntityStateResult? = withContext(Dispatchers.IO) {
+        val start = System.currentTimeMillis()
         val trimmed = rawEntityId.trim()
         if (trimmed.isBlank()) return@withContext null
         val entityId = if (!trimmed.contains(".")) "sensor.$trimmed" else trimmed
         try {
             val reqBuilder = buildRequest("/api/states/$entityId") ?: return@withContext null
             client.newCall(reqBuilder.get().build()).execute().use { response ->
-                if (!response.isSuccessful) return@withContext null
+                val duration = System.currentTimeMillis() - start
+                if (!response.isSuccessful) {
+                    Log.w("ApiPerf", "fetchEntityState $entityId failed: HTTP ${response.code} in ${duration}ms")
+                    return@withContext null
+                }
                 val bodyStr = response.body?.string() ?: return@withContext null
                 val json = JSONObject(bodyStr)
                 val state = json.optString("state", "N/A")
                 val attributes = json.optJSONObject("attributes")
                 val unit = attributes?.optString("unit_of_measurement")
                 val friendlyName = attributes?.optString("friendly_name")
+                Log.d("ApiPerf", "fetchEntityState $entityId succeeded in ${duration}ms (state: $state)")
                 EntityStateResult(entityId, state, unit, friendlyName)
             }
         } catch (e: Exception) {
-            Log.w("HomeAssistantApi", "Error fetching entity state for $entityId: ${e.message}")
+            val duration = System.currentTimeMillis() - start
+            Log.e("ApiPerf", "fetchEntityState $entityId threw ${e.javaClass.simpleName}: ${e.message} after ${duration}ms")
             null
         }
     }
 
     suspend fun callEntityService(rawEntityId: String, actionService: String = "toggle"): Boolean = withContext(Dispatchers.IO) {
+        val start = System.currentTimeMillis()
         val trimmed = rawEntityId.trim()
         if (trimmed.isBlank()) return@withContext false
         val entityId = if (!trimmed.contains(".")) "switch.$trimmed" else trimmed
@@ -84,14 +92,20 @@ class HomeAssistantApi(private val prefs: HaPreferences) {
             val jsonBody = JSONObject().apply { put("entity_id", entityId) }
             val requestBody = jsonBody.toString().toRequestBody("application/json; charset=utf-8".toMediaType())
             val reqBuilder = buildRequest("/api/services/$domain/$serviceToCall") ?: return@withContext false
-            client.newCall(reqBuilder.post(requestBody).build()).execute().use { it.isSuccessful }
+            client.newCall(reqBuilder.post(requestBody).build()).execute().use { response ->
+                val duration = System.currentTimeMillis() - start
+                Log.d("ApiPerf", "callEntityService $domain/$serviceToCall for $entityId result: ${response.isSuccessful} in ${duration}ms")
+                response.isSuccessful
+            }
         } catch (e: Exception) {
-            Log.w("HomeAssistantApi", "Error calling service for $entityId: ${e.message}")
+            val duration = System.currentTimeMillis() - start
+            Log.e("ApiPerf", "callEntityService for $entityId threw ${e.javaClass.simpleName}: ${e.message} after ${duration}ms")
             false
         }
     }
 
     suspend fun fetchCameraSnapshot(rawCameraEntityId: String): Bitmap? = withContext(Dispatchers.IO) {
+        val start = System.currentTimeMillis()
         val cameraEntityId = rawCameraEntityId.trim().let {
             if (it.isNotBlank() && !it.contains(".")) "camera.$it" else it
         }
@@ -100,12 +114,19 @@ class HomeAssistantApi(private val prefs: HaPreferences) {
         try {
             val reqBuilder = buildRequest("/api/camera_proxy/$cameraEntityId") ?: return@withContext null
             client.newCall(reqBuilder.get().build()).execute().use { response ->
-                if (!response.isSuccessful) return@withContext null
+                val duration = System.currentTimeMillis() - start
+                if (!response.isSuccessful) {
+                    Log.w("ApiPerf", "fetchCameraSnapshot $cameraEntityId failed: HTTP ${response.code} in ${duration}ms")
+                    return@withContext null
+                }
                 val bytes = response.body?.bytes() ?: return@withContext null
-                if (bytes.isEmpty()) return@withContext null
+                if (bytes.isEmpty()) {
+                    Log.w("ApiPerf", "fetchCameraSnapshot $cameraEntityId empty bytes in ${duration}ms")
+                    return@withContext null
+                }
                 val rawBitmap = BitmapFactory.decodeByteArray(bytes, 0, bytes.size) ?: return@withContext null
+                Log.d("ApiPerf", "fetchCameraSnapshot $cameraEntityId succeeded in ${duration}ms (${bytes.size} bytes)")
 
-                // Downscale for RemoteViews limit (max 400x250)
                 val maxWidth = 400
                 val maxHeight = 250
                 if (rawBitmap.width > maxWidth || rawBitmap.height > maxHeight) {
@@ -118,12 +139,14 @@ class HomeAssistantApi(private val prefs: HaPreferences) {
                 }
             }
         } catch (e: Exception) {
-            Log.w("HomeAssistantApi", "Error fetching camera snapshot for $cameraEntityId: ${e.message}")
+            val duration = System.currentTimeMillis() - start
+            Log.e("ApiPerf", "fetchCameraSnapshot $cameraEntityId threw ${e.javaClass.simpleName}: ${e.message} after ${duration}ms")
             null
         }
     }
 
     suspend fun testConnectionDetailed(): String = withContext(Dispatchers.IO) {
+        val start = System.currentTimeMillis()
         val serverUrl = prefs.serverUrl
         val token = prefs.token
         if (serverUrl.isBlank()) return@withContext "URL Server vuoto"
@@ -132,9 +155,18 @@ class HomeAssistantApi(private val prefs: HaPreferences) {
         try {
             val reqBuilder = buildRequest("/api/") ?: return@withContext "URL non valido"
             client.newCall(reqBuilder.get().build()).execute().use { response ->
-                if (response.isSuccessful) "OK" else "Errore HTTP ${response.code}"
+                val duration = System.currentTimeMillis() - start
+                if (response.isSuccessful) {
+                    Log.d("ApiPerf", "testConnectionDetailed succeeded in ${duration}ms")
+                    "OK"
+                } else {
+                    Log.w("ApiPerf", "testConnectionDetailed failed: HTTP ${response.code} in ${duration}ms")
+                    "Errore HTTP ${response.code}"
+                }
             }
         } catch (e: Exception) {
+            val duration = System.currentTimeMillis() - start
+            Log.e("ApiPerf", "testConnectionDetailed threw ${e.javaClass.simpleName}: ${e.message} after ${duration}ms")
             "Errore di Connessione: ${e.localizedMessage ?: e.message}"
         }
     }
