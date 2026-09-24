@@ -16,10 +16,27 @@ class ToggleEntityAction : ActionCallback {
     ) {
         val entityId = parameters[KEY_ENTITY_ID] ?: return
         val prefs = HaPreferences(context)
-        val api = HomeAssistantApi(prefs)
+        val now = System.currentTimeMillis()
 
-        // Call Home Assistant service toggle
-        api.callEntityService(entityId, "toggle")
+        if (prefs.requireConfirmation) {
+            val isPendingConfirm = (prefs.confirmingEntityId == entityId) && ((now - prefs.confirmingTimestamp) < 5000)
+            if (isPendingConfirm) {
+                // Confirmed on second tap! Reset confirmation state and execute action
+                prefs.confirmingEntityId = ""
+                prefs.confirmingTimestamp = 0L
+
+                val api = HomeAssistantApi(prefs)
+                api.callEntityService(entityId, "toggle")
+            } else {
+                // First tap: Set entity in confirmation state
+                prefs.confirmingEntityId = entityId
+                prefs.confirmingTimestamp = now
+            }
+        } else {
+            // Confirmation disabled: Direct execution
+            val api = HomeAssistantApi(prefs)
+            api.callEntityService(entityId, "toggle")
+        }
 
         // Update widget UI
         HaCompositeWidget().update(context, glanceId)
@@ -36,6 +53,9 @@ class RefreshWidgetAction : ActionCallback {
         glanceId: GlanceId,
         parameters: ActionParameters
     ) {
+        val prefs = HaPreferences(context)
+        prefs.confirmingEntityId = ""
+        prefs.confirmingTimestamp = 0L
         HaCompositeWidget().update(context, glanceId)
     }
 }

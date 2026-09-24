@@ -15,6 +15,20 @@ class HaPreferences(context: Context) {
         get() = prefs.getString("token", "") ?: ""
         set(value) = prefs.edit().putString("token", value.trim()).apply()
 
+    // Confirmation Setting
+    var requireConfirmation: Boolean
+        get() = prefs.getBoolean("require_confirmation", true)
+        set(value) = prefs.edit().putBoolean("require_confirmation", value).apply()
+
+    // Temporary confirmation state
+    var confirmingEntityId: String
+        get() = prefs.getString("confirming_entity_id", "") ?: ""
+        set(value) = prefs.edit().putString("confirming_entity_id", value).apply()
+
+    var confirmingTimestamp: Long
+        get() = prefs.getLong("confirming_timestamp", 0L)
+        set(value) = prefs.edit().putLong("confirming_timestamp", value).apply()
+
     // Camera
     var cameraEntity: String
         get() = prefs.getString("camera_entity", "camera.ingresso") ?: "camera.ingresso"

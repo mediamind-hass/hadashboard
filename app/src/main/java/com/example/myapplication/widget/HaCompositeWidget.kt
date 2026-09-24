@@ -90,6 +90,9 @@ class HaCompositeWidget : GlanceAppWidget() {
         provideContent {
             WidgetContent(
                 isConfigured = prefs.isConfigured,
+                requireConfirmation = prefs.requireConfirmation,
+                confirmingId = prefs.confirmingEntityId,
+                confirmingTs = prefs.confirmingTimestamp,
                 cameraBitmap = cameraBitmap,
                 s1Name = prefs.sensor1Name,
                 s1Val = s1Val,
@@ -125,6 +128,9 @@ class HaCompositeWidget : GlanceAppWidget() {
     @Composable
     private fun WidgetContent(
         isConfigured: Boolean,
+        requireConfirmation: Boolean,
+        confirmingId: String,
+        confirmingTs: Long,
         cameraBitmap: Bitmap?,
         s1Name: String, s1Val: String,
         s2Name: String, s2Val: String,
@@ -272,6 +278,9 @@ class HaCompositeWidget : GlanceAppWidget() {
                     entityId = b1Entity,
                     name = b1Name,
                     isOn = b1On,
+                    confirmingId = confirmingId,
+                    confirmingTs = confirmingTs,
+                    isConfirmingEnabled = requireConfirmation,
                     activeBg = activeBtnBg,
                     inactiveBg = inactiveBtnBg,
                     textColor = textColor,
@@ -282,6 +291,9 @@ class HaCompositeWidget : GlanceAppWidget() {
                     entityId = b2Entity,
                     name = b2Name,
                     isOn = b2On,
+                    confirmingId = confirmingId,
+                    confirmingTs = confirmingTs,
+                    isConfirmingEnabled = requireConfirmation,
                     activeBg = activeBtnBg,
                     inactiveBg = inactiveBtnBg,
                     textColor = textColor,
@@ -292,6 +304,9 @@ class HaCompositeWidget : GlanceAppWidget() {
                     entityId = b3Entity,
                     name = b3Name,
                     isOn = b3On,
+                    confirmingId = confirmingId,
+                    confirmingTs = confirmingTs,
+                    isConfirmingEnabled = requireConfirmation,
                     activeBg = activeBtnBg,
                     inactiveBg = inactiveBtnBg,
                     textColor = textColor,
@@ -302,6 +317,9 @@ class HaCompositeWidget : GlanceAppWidget() {
                     entityId = b4Entity,
                     name = b4Name,
                     isOn = b4On,
+                    confirmingId = confirmingId,
+                    confirmingTs = confirmingTs,
+                    isConfirmingEnabled = requireConfirmation,
                     activeBg = activeBtnBg,
                     inactiveBg = inactiveBtnBg,
                     textColor = textColor,
@@ -353,14 +371,23 @@ class HaCompositeWidget : GlanceAppWidget() {
         entityId: String,
         name: String,
         isOn: Boolean,
+        confirmingId: String,
+        confirmingTs: Long,
+        isConfirmingEnabled: Boolean,
         activeBg: Color,
         inactiveBg: Color,
         textColor: Color,
         modifier: GlanceModifier
     ) {
-        val bg = if (isOn) activeBg else inactiveBg
-        val prefix = if (isOn) "⚡" else "○"
-        val displayText = if (name.isNotBlank()) "$prefix $name" else prefix
+        val now = System.currentTimeMillis()
+        val isPendingConfirm = isConfirmingEnabled &&
+                confirmingId.isNotBlank() &&
+                confirmingId == entityId &&
+                (now - confirmingTs) < 5000
+
+        val bg = if (isPendingConfirm) Color(0xFFFF9800) else (if (isOn) activeBg else inactiveBg)
+        val prefix = if (isPendingConfirm) "⚠️" else (if (isOn) "⚡" else "○")
+        val displayText = if (isPendingConfirm) "⚠️ Confermi?" else (if (name.isNotBlank()) "$prefix $name" else prefix)
 
         Button(
             text = displayText,

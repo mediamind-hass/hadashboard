@@ -21,6 +21,7 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -90,6 +91,8 @@ fun ConfigurationScreen(modifier: Modifier = Modifier) {
 
     var b4Entity by remember { mutableStateOf(prefs.button4Entity) }
     var b4Name by remember { mutableStateOf(prefs.button4Name) }
+
+    var requireConfirmation by remember { mutableStateOf(prefs.requireConfirmation) }
 
     var isTesting by remember { mutableStateOf(false) }
 
@@ -213,6 +216,30 @@ fun ConfigurationScreen(modifier: Modifier = Modifier) {
             )
         }
 
+        Spacer(modifier = Modifier.height(12.dp))
+
+        // 5. SECURITY & CONFIRMATION CARD
+        SectionCard(title = "🛡️ Sicurezza Azioni Widget") {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(text = "Conferma al doppio tocco", fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
+                    Text(
+                        text = "Richiede di toccare due volte il pulsante sul widget prima di eseguire l'azione per prevenire tocchi accidentali.",
+                        fontSize = 12.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                Spacer(modifier = Modifier.width(8.dp))
+                Switch(
+                    checked = requireConfirmation,
+                    onCheckedChange = { requireConfirmation = it }
+                )
+            }
+        }
+
         Spacer(modifier = Modifier.height(20.dp))
 
         // ACTIONS
@@ -223,6 +250,7 @@ fun ConfigurationScreen(modifier: Modifier = Modifier) {
                     // Save prefs
                     prefs.serverUrl = serverUrl
                     prefs.token = token
+                    prefs.requireConfirmation = requireConfirmation
                     prefs.cameraEntity = cameraEntity
 
                     prefs.sensor1Entity = s1Entity
