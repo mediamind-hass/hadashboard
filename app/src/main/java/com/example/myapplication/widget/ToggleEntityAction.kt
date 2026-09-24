@@ -19,16 +19,20 @@ class ToggleEntityAction : ActionCallback {
         val now = System.currentTimeMillis()
 
         if (prefs.requireConfirmation) {
-            val isPendingConfirm = (prefs.confirmingEntityId == entityId) && ((now - prefs.confirmingTimestamp) < 8000)
+            val activeConfirmingId = prefs.confirmingEntityId
+            val isPendingConfirm = activeConfirmingId.isNotBlank() &&
+                    activeConfirmingId == entityId &&
+                    ((now - prefs.confirmingTimestamp) < 5000)
+
             if (isPendingConfirm) {
-                // Confirmed on second tap! Clear confirmation state and call Home Assistant
+                // Second tap on the same button: Confirmed! Reset state and call Home Assistant
                 prefs.confirmingEntityId = ""
                 prefs.confirmingTimestamp = 0L
 
                 val api = HomeAssistantApi(prefs)
                 api.callEntityService(entityId, "toggle")
             } else {
-                // First tap: Set entity in confirmation state immediately
+                // First tap (or tapping a different button): Set new confirmation target
                 prefs.confirmingEntityId = entityId
                 prefs.confirmingTimestamp = now
             }

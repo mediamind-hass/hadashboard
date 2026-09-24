@@ -20,9 +20,18 @@ class HaPreferences(context: Context) {
         get() = prefs.getBoolean("require_confirmation", true)
         set(value) = prefs.edit().putBoolean("require_confirmation", value).apply()
 
-    // Temporary confirmation state (using commit for immediate synchronous write across IPC)
+    // Temporary confirmation state with auto-expiration (5 seconds)
     var confirmingEntityId: String
-        get() = prefs.getString("confirming_entity_id", "") ?: ""
+        get() {
+            val id = prefs.getString("confirming_entity_id", "") ?: ""
+            val ts = prefs.getLong("confirming_timestamp", 0L)
+            if (id.isNotBlank() && (System.currentTimeMillis() - ts > 5000)) {
+                // Auto-expire confirmation state after 5 seconds
+                prefs.edit().putString("confirming_entity_id", "").putLong("confirming_timestamp", 0L).apply()
+                return ""
+            }
+            return id
+        }
         set(value) {
             prefs.edit().putString("confirming_entity_id", value).commit()
         }

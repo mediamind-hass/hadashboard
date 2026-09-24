@@ -60,10 +60,7 @@ class HaCompositeWidget : GlanceAppWidget() {
         var b3On = false
         var b4On = false
 
-        val now = System.currentTimeMillis()
-        val isConfirmingFastPass = prefs.confirmingEntityId.isNotBlank() && ((now - prefs.confirmingTimestamp) < 8000)
-
-        if (prefs.isConfigured && !isConfirmingFastPass) {
+        if (prefs.isConfigured) {
             try {
                 supervisorScope {
                     val cameraDef = async {
