@@ -24,7 +24,7 @@ suspend fun handleButtonAction(context: Context, glanceId: GlanceId, buttonIndex
         delay(400)
     }
 
-    HaCompositeWidget().update(context, glanceId)
+    // Call updateAll only once to prevent duplicate parallel execution
     HaCompositeWidget().updateAll(context)
 }
 
@@ -58,8 +58,8 @@ class RefreshWidgetAction : ActionCallback {
         val prefs = HaPreferences(context)
         val api = HomeAssistantApi(prefs)
         api.testConnectionDetailed()
-        val widget = HaCompositeWidget()
-        widget.update(context, glanceId)
-        widget.updateAll(context)
+        
+        // Call updateAll only once to prevent duplicate parallel execution
+        HaCompositeWidget().updateAll(context)
     }
 }
