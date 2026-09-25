@@ -4,6 +4,7 @@ import android.content.Context
 import androidx.glance.GlanceId
 import androidx.glance.action.ActionParameters
 import androidx.glance.appwidget.action.ActionCallback
+import androidx.glance.appwidget.updateAll
 import com.example.myapplication.data.HaPreferences
 import com.example.myapplication.data.HomeAssistantApi
 import kotlinx.coroutines.delay
@@ -24,6 +25,7 @@ suspend fun handleButtonAction(context: Context, glanceId: GlanceId, buttonIndex
     }
 
     HaCompositeWidget().update(context, glanceId)
+    HaCompositeWidget().updateAll(context)
 }
 
 class Button1Action : ActionCallback {
@@ -52,7 +54,8 @@ class Button4Action : ActionCallback {
 
 class RefreshWidgetAction : ActionCallback {
     override suspend fun onAction(context: Context, glanceId: GlanceId, parameters: ActionParameters) {
-        val prefs = HaPreferences(context)
-        HaCompositeWidget().update(context, glanceId)
+        val widget = HaCompositeWidget()
+        widget.update(context, glanceId)
+        widget.updateAll(context)
     }
 }
