@@ -40,6 +40,7 @@ import androidx.glance.text.TextStyle
 import com.example.myapplication.data.HaPreferences
 import com.example.myapplication.data.HomeAssistantApi
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.withTimeoutOrNull
 
 class HaCompositeWidget : GlanceAppWidget() {
 
@@ -61,23 +62,20 @@ class HaCompositeWidget : GlanceAppWidget() {
 
         if (prefs.isConfigured) {
             try {
-                // Fetch camera and entities sequentially one by one with fixed delay to avoid server overload
-                cameraBitmap = api.fetchCameraSnapshot(prefs.cameraEntity)
-                delay(50)
-
+                // 1. Fetch fast entity states (sensors & buttons) first
                 val s1 = api.fetchEntityState(prefs.sensor1Entity)
-                delay(30)
+                delay(20)
                 val s2 = api.fetchEntityState(prefs.sensor2Entity)
-                delay(30)
+                delay(20)
                 val s3 = api.fetchEntityState(prefs.sensor3Entity)
-                delay(30)
+                delay(20)
 
                 val b1 = api.fetchEntityState(prefs.button1Entity)
-                delay(30)
+                delay(20)
                 val b2 = api.fetchEntityState(prefs.button2Entity)
-                delay(30)
+                delay(20)
                 val b3 = api.fetchEntityState(prefs.button3Entity)
-                delay(30)
+                delay(20)
                 val b4 = api.fetchEntityState(prefs.button4Entity)
 
                 s1Val = formatSensorVal(s1?.state, prefs.sensor1Unit)
@@ -88,6 +86,11 @@ class HaCompositeWidget : GlanceAppWidget() {
                 b2On = b2?.state == "on"
                 b3On = b3?.state == "on"
                 b4On = b4?.state == "on"
+
+                // 2. Fetch camera snapshot with non-blocking timeout (so camera slowness remotely never blocks sensors/buttons)
+                cameraBitmap = withTimeoutOrNull(4000) {
+                    api.fetchCameraSnapshot(prefs.cameraEntity)
+                }
             } catch (e: Exception) {
                 e.printStackTrace()
             }
