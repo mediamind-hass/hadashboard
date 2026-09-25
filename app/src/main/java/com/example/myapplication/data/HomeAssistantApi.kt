@@ -206,7 +206,7 @@ class HomeAssistantApi(private val prefs: HaPreferences) {
             }
         } catch (e: Exception) {
             val duration = System.currentTimeMillis() - start
-            Log.e("ApiPerf", "fetchCameraSnapshot $cameraEntityId threw ${e.javaClass.simpleName}: ${e.message} after ${duration}ms")
+            Log.w("ApiPerf", "fetchCameraSnapshot $cameraEntityId skipped/unavailable (${e.javaClass.simpleName}) after ${duration}ms")
             null
         }
     }
