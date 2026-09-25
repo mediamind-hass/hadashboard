@@ -68,60 +68,68 @@ class HomeAssistantApi(private val prefs: HaPreferences) {
 
     /**
      * Fetches all widget entity states in a single request using Home Assistant's Template API (/api/template).
-     * This opens only 1 TCP connection, completely avoiding remote port-forward/VPN connection rate-limiting and throttling.
+     * Includes automatic retry on cold-start background VPN block.
      */
     suspend fun fetchWidgetStates(): WidgetStatesResult = withContext(Dispatchers.IO) {
-        val start = System.currentTimeMillis()
-        try {
-            val reqBuilder = buildRequest("/api/template") ?: return@withContext WidgetStatesResult()
-            
-            val s1Id = formatEntity(prefs.sensor1Entity, "sensor")
-            val s2Id = formatEntity(prefs.sensor2Entity, "sensor")
-            val s3Id = formatEntity(prefs.sensor3Entity, "sensor")
-            val b1Id = formatEntity(prefs.button1Entity, "switch")
-            val b2Id = formatEntity(prefs.button2Entity, "switch")
-            val b3Id = formatEntity(prefs.button3Entity, "switch")
-            val b4Id = formatEntity(prefs.button4Entity, "switch")
+        val maxAttempts = 2
+        for (attempt in 0 until maxAttempts) {
+            val start = System.currentTimeMillis()
+            try {
+                val reqBuilder = buildRequest("/api/template") ?: return@withContext WidgetStatesResult()
+                
+                val s1Id = formatEntity(prefs.sensor1Entity, "sensor")
+                val s2Id = formatEntity(prefs.sensor2Entity, "sensor")
+                val s3Id = formatEntity(prefs.sensor3Entity, "sensor")
+                val b1Id = formatEntity(prefs.button1Entity, "switch")
+                val b2Id = formatEntity(prefs.button2Entity, "switch")
+                val b3Id = formatEntity(prefs.button3Entity, "switch")
+                val b4Id = formatEntity(prefs.button4Entity, "switch")
 
-            val templateStr = """
-                {
-                  "s1": "{{ states('$s1Id') }}",
-                  "s2": "{{ states('$s2Id') }}",
-                  "s3": "{{ states('$s3Id') }}",
-                  "b1": "{{ states('$b1Id') }}",
-                  "b2": "{{ states('$b2Id') }}",
-                  "b3": "{{ states('$b3Id') }}",
-                  "b4": "{{ states('$b4Id') }}"
+                val templateStr = """
+                    {
+                      "s1": "{{ states('$s1Id') }}",
+                      "s2": "{{ states('$s2Id') }}",
+                      "s3": "{{ states('$s3Id') }}",
+                      "b1": "{{ states('$b1Id') }}",
+                      "b2": "{{ states('$b2Id') }}",
+                      "b3": "{{ states('$b3Id') }}",
+                      "b4": "{{ states('$b4Id') }}"
+                    }
+                """.trimIndent()
+
+                val jsonBody = JSONObject().apply { put("template", templateStr) }
+                val requestBody = jsonBody.toString().toRequestBody("application/json; charset=utf-8".toMediaType())
+
+                val result = client.newCall(reqBuilder.post(requestBody).build()).execute().use { response ->
+                    val duration = System.currentTimeMillis() - start
+                    if (!response.isSuccessful) {
+                        Log.w("ApiPerf", "fetchWidgetStates failed: HTTP ${response.code} in ${duration}ms")
+                        null
+                    } else {
+                        val bodyStr = response.body?.string() ?: return@use null
+                        val json = JSONObject(bodyStr)
+                        Log.d("ApiPerf", "fetchWidgetStates succeeded in ${duration}ms")
+                        WidgetStatesResult(
+                            s1 = json.optString("s1", "---"),
+                            s2 = json.optString("s2", "---"),
+                            s3 = json.optString("s3", "---"),
+                            b1 = json.optString("b1", "off"),
+                            b2 = json.optString("b2", "off"),
+                            b3 = json.optString("b3", "off"),
+                            b4 = json.optString("b4", "off")
+                        )
+                    }
                 }
-            """.trimIndent()
-
-            val jsonBody = JSONObject().apply { put("template", templateStr) }
-            val requestBody = jsonBody.toString().toRequestBody("application/json; charset=utf-8".toMediaType())
-
-            client.newCall(reqBuilder.post(requestBody).build()).execute().use { response ->
+                if (result != null) return@withContext result
+            } catch (e: Exception) {
                 val duration = System.currentTimeMillis() - start
-                if (!response.isSuccessful) {
-                    Log.w("ApiPerf", "fetchWidgetStates failed: HTTP ${response.code} in ${duration}ms")
-                    return@withContext WidgetStatesResult()
-                }
-                val bodyStr = response.body?.string() ?: return@withContext WidgetStatesResult()
-                val json = JSONObject(bodyStr)
-                Log.d("ApiPerf", "fetchWidgetStates succeeded in ${duration}ms")
-                WidgetStatesResult(
-                    s1 = json.optString("s1", "---"),
-                    s2 = json.optString("s2", "---"),
-                    s3 = json.optString("s3", "---"),
-                    b1 = json.optString("b1", "off"),
-                    b2 = json.optString("b2", "off"),
-                    b3 = json.optString("b3", "off"),
-                    b4 = json.optString("b4", "off")
-                )
+                Log.w("ApiPerf", "fetchWidgetStates attempt ${attempt + 1} failed: ${e.message} in ${duration}ms")
             }
-        } catch (e: Exception) {
-            val duration = System.currentTimeMillis() - start
-            Log.e("ApiPerf", "fetchWidgetStates threw ${e.javaClass.simpleName}: ${e.message} after ${duration}ms")
-            WidgetStatesResult()
+            if (attempt < maxAttempts - 1) {
+                try { Thread.sleep(1000) } catch (_: InterruptedException) {}
+            }
         }
+        WidgetStatesResult()
     }
 
     suspend fun fetchEntityState(rawEntityId: String): EntityStateResult? = withContext(Dispatchers.IO) {
@@ -220,28 +228,35 @@ class HomeAssistantApi(private val prefs: HaPreferences) {
     }
 
     suspend fun testConnectionDetailed(): String = withContext(Dispatchers.IO) {
-        val start = System.currentTimeMillis()
-        val serverUrl = prefs.serverUrl
-        val token = prefs.token
-        if (serverUrl.isBlank()) return@withContext "URL Server vuoto"
-        if (token.isBlank()) return@withContext "Token Bearer vuoto"
+        val maxAttempts = 2
+        for (attempt in 0 until maxAttempts) {
+            val start = System.currentTimeMillis()
+            val serverUrl = prefs.serverUrl
+            val token = prefs.token
+            if (serverUrl.isBlank()) return@withContext "URL Server vuoto"
+            if (token.isBlank()) return@withContext "Token Bearer vuoto"
 
-        try {
-            val reqBuilder = buildRequest("/api/") ?: return@withContext "URL non valido"
-            client.newCall(reqBuilder.get().build()).execute().use { response ->
-                val duration = System.currentTimeMillis() - start
-                if (response.isSuccessful) {
-                    Log.d("ApiPerf", "testConnectionDetailed succeeded in ${duration}ms")
-                    "OK"
-                } else {
-                    Log.w("ApiPerf", "testConnectionDetailed failed: HTTP ${response.code} in ${duration}ms")
-                    "Errore HTTP ${response.code}"
+            try {
+                val reqBuilder = buildRequest("/api/") ?: return@withContext "URL non valido"
+                val resMsg = client.newCall(reqBuilder.get().build()).execute().use { response ->
+                    val duration = System.currentTimeMillis() - start
+                    if (response.isSuccessful) {
+                        Log.d("ApiPerf", "testConnectionDetailed succeeded in ${duration}ms")
+                        "OK"
+                    } else {
+                        Log.w("ApiPerf", "testConnectionDetailed failed: HTTP ${response.code} in ${duration}ms")
+                        null
+                    }
                 }
+                if (resMsg == "OK") return@withContext "OK"
+            } catch (e: Exception) {
+                val duration = System.currentTimeMillis() - start
+                Log.w("ApiPerf", "testConnectionDetailed attempt ${attempt + 1} failed: ${e.message} in ${duration}ms")
             }
-        } catch (e: Exception) {
-            val duration = System.currentTimeMillis() - start
-            Log.e("ApiPerf", "testConnectionDetailed threw ${e.javaClass.simpleName}: ${e.message} after ${duration}ms")
-            "Errore di Connessione: ${e.localizedMessage ?: e.message}"
+            if (attempt < maxAttempts - 1) {
+                try { Thread.sleep(1000) } catch (_: InterruptedException) {}
+            }
         }
+        "Errore di Connessione"
     }
 }
