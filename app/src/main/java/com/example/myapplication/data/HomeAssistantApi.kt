@@ -5,6 +5,7 @@ import android.graphics.BitmapFactory
 import android.util.Log
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import okhttp3.ConnectionPool
 import okhttp3.Dispatcher
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
@@ -36,16 +37,20 @@ class HomeAssistantApi(private val prefs: HaPreferences) {
         private val client = OkHttpClient.Builder()
             .connectTimeout(15, TimeUnit.SECONDS)
             .readTimeout(15, TimeUnit.SECONDS)
+            .connectionPool(ConnectionPool(0, 1, TimeUnit.SECONDS))
+            .retryOnConnectionFailure(true)
             .dispatcher(Dispatcher().apply {
                 maxRequests = 32
                 maxRequestsPerHost = 16
             })
             .build()
 
-        // Dedicated fast-failing client for cameras to avoid 15s delays when remote/VPN camera is slow
+        // Dedicated fast-failing client for cameras with fresh connections for mobile/foldable network switches
         private val cameraClient = OkHttpClient.Builder()
             .connectTimeout(4, TimeUnit.SECONDS)
             .readTimeout(5, TimeUnit.SECONDS)
+            .connectionPool(ConnectionPool(0, 1, TimeUnit.SECONDS))
+            .retryOnConnectionFailure(true)
             .build()
     }
 
