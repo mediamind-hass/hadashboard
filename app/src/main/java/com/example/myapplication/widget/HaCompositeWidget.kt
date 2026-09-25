@@ -39,7 +39,6 @@ import androidx.glance.text.Text
 import androidx.glance.text.TextStyle
 import com.example.myapplication.data.HaPreferences
 import com.example.myapplication.data.HomeAssistantApi
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.withTimeoutOrNull
 
 class HaCompositeWidget : GlanceAppWidget() {
@@ -62,22 +61,17 @@ class HaCompositeWidget : GlanceAppWidget() {
 
         if (prefs.isConfigured) {
             try {
-                // Fetch individual entity states sequentially with a small pacing delay to avoid saturating remote port-forward / VPN
-                val s1 = withTimeoutOrNull(3000) { api.fetchEntityState(prefs.sensor1Entity) }
-                delay(150)
-                val s2 = withTimeoutOrNull(3000) { api.fetchEntityState(prefs.sensor2Entity) }
-                delay(150)
-                val s3 = withTimeoutOrNull(3000) { api.fetchEntityState(prefs.sensor3Entity) }
-                delay(150)
+                // Fetch ALL entity states in ONE single request (/api/states) -> opens only 1 TCP connection, avoiding port-forward rate limits
+                val allStates = api.fetchAllStates()
 
-                val b1 = withTimeoutOrNull(3000) { api.fetchEntityState(prefs.button1Entity) }
-                delay(150)
-                val b2 = withTimeoutOrNull(3000) { api.fetchEntityState(prefs.button2Entity) }
-                delay(150)
-                val b3 = withTimeoutOrNull(3000) { api.fetchEntityState(prefs.button3Entity) }
-                delay(150)
-                val b4 = withTimeoutOrNull(3000) { api.fetchEntityState(prefs.button4Entity) }
-                delay(150)
+                val s1 = allStates[prefs.sensor1Entity.trim().let { if (!it.contains(".")) "sensor.$it" else it }]
+                val s2 = allStates[prefs.sensor2Entity.trim().let { if (!it.contains(".")) "sensor.$it" else it }]
+                val s3 = allStates[prefs.sensor3Entity.trim().let { if (!it.contains(".")) "sensor.$it" else it }]
+
+                val b1 = allStates[prefs.button1Entity.trim().let { if (!it.contains(".")) "switch.$it" else it }]
+                val b2 = allStates[prefs.button2Entity.trim().let { if (!it.contains(".")) "switch.$it" else it }]
+                val b3 = allStates[prefs.button3Entity.trim().let { if (!it.contains(".")) "switch.$it" else it }]
+                val b4 = allStates[prefs.button4Entity.trim().let { if (!it.contains(".")) "switch.$it" else it }]
 
                 s1Val = formatSensorVal(s1?.state, prefs.sensor1Unit)
                 s2Val = formatSensorVal(s2?.state, prefs.sensor2Unit)
