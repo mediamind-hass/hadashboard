@@ -54,6 +54,10 @@ class Button4Action : ActionCallback {
 
 class RefreshWidgetAction : ActionCallback {
     override suspend fun onAction(context: Context, glanceId: GlanceId, parameters: ActionParameters) {
+        delay(100)
+        val prefs = HaPreferences(context)
+        val api = HomeAssistantApi(prefs)
+        api.testConnectionDetailed()
         val widget = HaCompositeWidget()
         widget.update(context, glanceId)
         widget.updateAll(context)
