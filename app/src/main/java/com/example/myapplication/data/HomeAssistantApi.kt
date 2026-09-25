@@ -32,6 +32,12 @@ class HomeAssistantApi(private val prefs: HaPreferences) {
                 maxRequestsPerHost = 16
             })
             .build()
+
+        // Dedicated fast-failing client for cameras to avoid 15s delays when remote/VPN camera is slow
+        private val cameraClient = OkHttpClient.Builder()
+            .connectTimeout(4, TimeUnit.SECONDS)
+            .readTimeout(5, TimeUnit.SECONDS)
+            .build()
     }
 
     private fun buildRequest(path: String): Request.Builder? {
@@ -151,7 +157,7 @@ class HomeAssistantApi(private val prefs: HaPreferences) {
 
         try {
             val reqBuilder = buildRequest("/api/camera_proxy/$cameraEntityId") ?: return@withContext null
-            client.newCall(reqBuilder.get().build()).execute().use { response ->
+            cameraClient.newCall(reqBuilder.get().build()).execute().use { response ->
                 val duration = System.currentTimeMillis() - start
                 if (!response.isSuccessful) {
                     Log.w("ApiPerf", "fetchCameraSnapshot $cameraEntityId failed: HTTP ${response.code} in ${duration}ms")
