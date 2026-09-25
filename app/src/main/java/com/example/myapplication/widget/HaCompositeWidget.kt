@@ -39,7 +39,6 @@ import androidx.glance.text.Text
 import androidx.glance.text.TextStyle
 import com.example.myapplication.data.HaPreferences
 import com.example.myapplication.data.HomeAssistantApi
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.withTimeoutOrNull
 
 class HaCompositeWidget : GlanceAppWidget() {
@@ -62,35 +61,17 @@ class HaCompositeWidget : GlanceAppWidget() {
 
         if (prefs.isConfigured) {
             try {
-                // 0. Warm up VPN / port-forward tunnel to wake up the socket route
-                api.testConnectionDetailed()
-                delay(100)
+                // 1. Fetch all widget states in 1 single POST /api/template request (opens only 1 TCP connection)
+                val widgetStates = api.fetchWidgetStates()
 
-                // 1. Fetch individual entity states sequentially with pacing delay
-                val s1 = withTimeoutOrNull(3000) { api.fetchEntityState(prefs.sensor1Entity) }
-                delay(100)
-                val s2 = withTimeoutOrNull(3000) { api.fetchEntityState(prefs.sensor2Entity) }
-                delay(100)
-                val s3 = withTimeoutOrNull(3000) { api.fetchEntityState(prefs.sensor3Entity) }
-                delay(100)
+                s1Val = formatSensorVal(widgetStates.s1, prefs.sensor1Unit)
+                s2Val = formatSensorVal(widgetStates.s2, prefs.sensor2Unit)
+                s3Val = formatSensorVal(widgetStates.s3, prefs.sensor3Unit)
 
-                val b1 = withTimeoutOrNull(3000) { api.fetchEntityState(prefs.button1Entity) }
-                delay(100)
-                val b2 = withTimeoutOrNull(3000) { api.fetchEntityState(prefs.button2Entity) }
-                delay(100)
-                val b3 = withTimeoutOrNull(3000) { api.fetchEntityState(prefs.button3Entity) }
-                delay(100)
-                val b4 = withTimeoutOrNull(3000) { api.fetchEntityState(prefs.button4Entity) }
-                delay(100)
-
-                s1Val = formatSensorVal(s1?.state, prefs.sensor1Unit)
-                s2Val = formatSensorVal(s2?.state, prefs.sensor2Unit)
-                s3Val = formatSensorVal(s3?.state, prefs.sensor3Unit)
-
-                b1On = b1?.state == "on"
-                b2On = b2?.state == "on"
-                b3On = b3?.state == "on"
-                b4On = b4?.state == "on"
+                b1On = widgetStates.b1 == "on"
+                b2On = widgetStates.b2 == "on"
+                b3On = widgetStates.b3 == "on"
+                b4On = widgetStates.b4 == "on"
 
                 // 2. Fetch camera snapshot non-blockingly last (protected by 4s timeout)
                 cameraBitmap = withTimeoutOrNull(4000) {

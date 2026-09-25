@@ -21,6 +21,16 @@ data class EntityStateResult(
     val friendlyName: String? = null
 )
 
+data class WidgetStatesResult(
+    val s1: String = "---",
+    val s2: String = "---",
+    val s3: String = "---",
+    val b1: String = "off",
+    val b2: String = "off",
+    val b3: String = "off",
+    val b4: String = "off"
+)
+
 class HomeAssistantApi(private val prefs: HaPreferences) {
 
     companion object {
@@ -52,40 +62,52 @@ class HomeAssistantApi(private val prefs: HaPreferences) {
     }
 
     /**
-     * Fetches all entity states in a single request (/api/states),
-     * matching Home Assistant API best practices for dashboards and apps.
+     * Fetches all widget entity states in a single request using Home Assistant's Template API (/api/template).
+     * This opens only 1 TCP connection, completely avoiding remote port-forward/VPN connection rate-limiting and throttling.
      */
-    suspend fun fetchAllStates(): Map<String, EntityStateResult> = withContext(Dispatchers.IO) {
+    suspend fun fetchWidgetStates(): WidgetStatesResult = withContext(Dispatchers.IO) {
         val start = System.currentTimeMillis()
-        val result = mutableMapOf<String, EntityStateResult>()
         try {
-            val reqBuilder = buildRequest("/api/states") ?: return@withContext result
-            client.newCall(reqBuilder.get().build()).execute().use { response ->
+            val reqBuilder = buildRequest("/api/template") ?: return@withContext WidgetStatesResult()
+            val templateStr = """
+                {
+                  "s1": "{{ states('${prefs.sensor1Entity}') }}",
+                  "s2": "{{ states('${prefs.sensor2Entity}') }}",
+                  "s3": "{{ states('${prefs.sensor3Entity}') }}",
+                  "b1": "{{ states('${prefs.button1Entity}') }}",
+                  "b2": "{{ states('${prefs.button2Entity}') }}",
+                  "b3": "{{ states('${prefs.button3Entity}') }}",
+                  "b4": "{{ states('${prefs.button4Entity}') }}"
+                }
+            """.trimIndent()
+
+            val jsonBody = JSONObject().apply { put("template", templateStr) }
+            val requestBody = jsonBody.toString().toRequestBody("application/json; charset=utf-8".toMediaType())
+
+            client.newCall(reqBuilder.post(requestBody).build()).execute().use { response ->
                 val duration = System.currentTimeMillis() - start
                 if (!response.isSuccessful) {
-                    Log.w("ApiPerf", "fetchAllStates failed: HTTP ${response.code} in ${duration}ms")
-                    return@withContext result
+                    Log.w("ApiPerf", "fetchWidgetStates failed: HTTP ${response.code} in ${duration}ms")
+                    return@withContext WidgetStatesResult()
                 }
-                val bodyStr = response.body?.string() ?: return@withContext result
-                val jsonArray = JSONArray(bodyStr)
-                for (i in 0 until jsonArray.length()) {
-                    val json = jsonArray.getJSONObject(i)
-                    val entityId = json.optString("entity_id")
-                    val state = json.optString("state", "N/A")
-                    val attributes = json.optJSONObject("attributes")
-                    val unit = attributes?.optString("unit_of_measurement")
-                    val friendlyName = attributes?.optString("friendly_name")
-                    if (entityId.isNotBlank()) {
-                        result[entityId] = EntityStateResult(entityId, state, unit, friendlyName)
-                    }
-                }
-                Log.d("ApiPerf", "fetchAllStates succeeded in ${duration}ms (${result.size} entities loaded)")
+                val bodyStr = response.body?.string() ?: return@withContext WidgetStatesResult()
+                val json = JSONObject(bodyStr)
+                Log.d("ApiPerf", "fetchWidgetStates succeeded in ${duration}ms")
+                WidgetStatesResult(
+                    s1 = json.optString("s1", "---"),
+                    s2 = json.optString("s2", "---"),
+                    s3 = json.optString("s3", "---"),
+                    b1 = json.optString("b1", "off"),
+                    b2 = json.optString("b2", "off"),
+                    b3 = json.optString("b3", "off"),
+                    b4 = json.optString("b4", "off")
+                )
             }
         } catch (e: Exception) {
             val duration = System.currentTimeMillis() - start
-            Log.e("ApiPerf", "fetchAllStates threw ${e.javaClass.simpleName}: ${e.message} after ${duration}ms")
+            Log.e("ApiPerf", "fetchWidgetStates threw ${e.javaClass.simpleName}: ${e.message} after ${duration}ms")
+            WidgetStatesResult()
         }
-        result
     }
 
     suspend fun fetchEntityState(rawEntityId: String): EntityStateResult? = withContext(Dispatchers.IO) {
