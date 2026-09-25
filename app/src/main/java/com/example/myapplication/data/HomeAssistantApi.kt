@@ -10,7 +10,6 @@ import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
-import org.json.JSONArray
 import org.json.JSONObject
 import java.util.concurrent.TimeUnit
 
@@ -61,6 +60,12 @@ class HomeAssistantApi(private val prefs: HaPreferences) {
             .addHeader("Content-Type", "application/json")
     }
 
+    private fun formatEntity(raw: String, defaultDomain: String): String {
+        val trimmed = raw.trim()
+        if (trimmed.isBlank()) return "$defaultDomain.unknown"
+        return if (!trimmed.contains(".")) "$defaultDomain.$trimmed" else trimmed
+    }
+
     /**
      * Fetches all widget entity states in a single request using Home Assistant's Template API (/api/template).
      * This opens only 1 TCP connection, completely avoiding remote port-forward/VPN connection rate-limiting and throttling.
@@ -69,15 +74,24 @@ class HomeAssistantApi(private val prefs: HaPreferences) {
         val start = System.currentTimeMillis()
         try {
             val reqBuilder = buildRequest("/api/template") ?: return@withContext WidgetStatesResult()
+            
+            val s1Id = formatEntity(prefs.sensor1Entity, "sensor")
+            val s2Id = formatEntity(prefs.sensor2Entity, "sensor")
+            val s3Id = formatEntity(prefs.sensor3Entity, "sensor")
+            val b1Id = formatEntity(prefs.button1Entity, "switch")
+            val b2Id = formatEntity(prefs.button2Entity, "switch")
+            val b3Id = formatEntity(prefs.button3Entity, "switch")
+            val b4Id = formatEntity(prefs.button4Entity, "switch")
+
             val templateStr = """
                 {
-                  "s1": "{{ states('${prefs.sensor1Entity}') }}",
-                  "s2": "{{ states('${prefs.sensor2Entity}') }}",
-                  "s3": "{{ states('${prefs.sensor3Entity}') }}",
-                  "b1": "{{ states('${prefs.button1Entity}') }}",
-                  "b2": "{{ states('${prefs.button2Entity}') }}",
-                  "b3": "{{ states('${prefs.button3Entity}') }}",
-                  "b4": "{{ states('${prefs.button4Entity}') }}"
+                  "s1": "{{ states('$s1Id') }}",
+                  "s2": "{{ states('$s2Id') }}",
+                  "s3": "{{ states('$s3Id') }}",
+                  "b1": "{{ states('$b1Id') }}",
+                  "b2": "{{ states('$b2Id') }}",
+                  "b3": "{{ states('$b3Id') }}",
+                  "b4": "{{ states('$b4Id') }}"
                 }
             """.trimIndent()
 
@@ -112,9 +126,7 @@ class HomeAssistantApi(private val prefs: HaPreferences) {
 
     suspend fun fetchEntityState(rawEntityId: String): EntityStateResult? = withContext(Dispatchers.IO) {
         val start = System.currentTimeMillis()
-        val trimmed = rawEntityId.trim()
-        if (trimmed.isBlank()) return@withContext null
-        val entityId = if (!trimmed.contains(".")) "sensor.$trimmed" else trimmed
+        val entityId = formatEntity(rawEntityId, "sensor")
         try {
             val reqBuilder = buildRequest("/api/states/$entityId") ?: return@withContext null
             client.newCall(reqBuilder.get().build()).execute().use { response ->
@@ -141,9 +153,7 @@ class HomeAssistantApi(private val prefs: HaPreferences) {
 
     suspend fun callEntityService(rawEntityId: String, actionService: String = "toggle"): Boolean = withContext(Dispatchers.IO) {
         val start = System.currentTimeMillis()
-        val trimmed = rawEntityId.trim()
-        if (trimmed.isBlank()) return@withContext false
-        val entityId = if (!trimmed.contains(".")) "switch.$trimmed" else trimmed
+        val entityId = formatEntity(rawEntityId, "switch")
         val parts = entityId.split(".", limit = 2)
         if (parts.size < 2) return@withContext false
         val domain = parts[0]
@@ -172,9 +182,7 @@ class HomeAssistantApi(private val prefs: HaPreferences) {
 
     suspend fun fetchCameraSnapshot(rawCameraEntityId: String): Bitmap? = withContext(Dispatchers.IO) {
         val start = System.currentTimeMillis()
-        val cameraEntityId = rawCameraEntityId.trim().let {
-            if (it.isNotBlank() && !it.contains(".")) "camera.$it" else it
-        }
+        val cameraEntityId = formatEntity(rawCameraEntityId, "camera")
         if (cameraEntityId.isBlank()) return@withContext null
 
         try {
