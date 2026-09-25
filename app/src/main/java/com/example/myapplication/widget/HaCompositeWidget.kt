@@ -39,7 +39,6 @@ import androidx.glance.text.Text
 import androidx.glance.text.TextStyle
 import com.example.myapplication.data.HaPreferences
 import com.example.myapplication.data.HomeAssistantApi
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.withTimeoutOrNull
 
 class HaCompositeWidget : GlanceAppWidget() {
@@ -62,21 +61,17 @@ class HaCompositeWidget : GlanceAppWidget() {
 
         if (prefs.isConfigured) {
             try {
-                // 1. Fetch fast entity states (sensors & buttons) first
-                val s1 = api.fetchEntityState(prefs.sensor1Entity)
-                delay(20)
-                val s2 = api.fetchEntityState(prefs.sensor2Entity)
-                delay(20)
-                val s3 = api.fetchEntityState(prefs.sensor3Entity)
-                delay(20)
+                // 1. Fetch ALL entity states in a single request (/api/states) matching HA API best practices
+                val allStates = api.fetchAllStates()
 
-                val b1 = api.fetchEntityState(prefs.button1Entity)
-                delay(20)
-                val b2 = api.fetchEntityState(prefs.button2Entity)
-                delay(20)
-                val b3 = api.fetchEntityState(prefs.button3Entity)
-                delay(20)
-                val b4 = api.fetchEntityState(prefs.button4Entity)
+                val s1 = allStates[prefs.sensor1Entity.trim().let { if (!it.contains(".")) "sensor.$it" else it }]
+                val s2 = allStates[prefs.sensor2Entity.trim().let { if (!it.contains(".")) "sensor.$it" else it }]
+                val s3 = allStates[prefs.sensor3Entity.trim().let { if (!it.contains(".")) "sensor.$it" else it }]
+
+                val b1 = allStates[prefs.button1Entity.trim().let { if (!it.contains(".")) "switch.$it" else it }]
+                val b2 = allStates[prefs.button2Entity.trim().let { if (!it.contains(".")) "switch.$it" else it }]
+                val b3 = allStates[prefs.button3Entity.trim().let { if (!it.contains(".")) "switch.$it" else it }]
+                val b4 = allStates[prefs.button4Entity.trim().let { if (!it.contains(".")) "switch.$it" else it }]
 
                 s1Val = formatSensorVal(s1?.state, prefs.sensor1Unit)
                 s2Val = formatSensorVal(s2?.state, prefs.sensor2Unit)
@@ -87,7 +82,7 @@ class HaCompositeWidget : GlanceAppWidget() {
                 b3On = b3?.state == "on"
                 b4On = b4?.state == "on"
 
-                // 2. Fetch camera snapshot with non-blocking timeout (so camera slowness remotely never blocks sensors/buttons)
+                // 2. Fetch camera snapshot non-blockingly last (protected by 4s timeout)
                 cameraBitmap = withTimeoutOrNull(4000) {
                     api.fetchCameraSnapshot(prefs.cameraEntity)
                 }
