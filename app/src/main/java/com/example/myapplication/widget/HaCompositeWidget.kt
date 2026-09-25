@@ -61,17 +61,15 @@ class HaCompositeWidget : GlanceAppWidget() {
 
         if (prefs.isConfigured) {
             try {
-                // 1. Fetch ALL entity states in a single request (/api/states) matching HA API best practices
-                val allStates = api.fetchAllStates()
+                // Fetch individual entity states safely and quickly with lightweight payloads
+                val s1 = withTimeoutOrNull(3000) { api.fetchEntityState(prefs.sensor1Entity) }
+                val s2 = withTimeoutOrNull(3000) { api.fetchEntityState(prefs.sensor2Entity) }
+                val s3 = withTimeoutOrNull(3000) { api.fetchEntityState(prefs.sensor3Entity) }
 
-                val s1 = allStates[prefs.sensor1Entity.trim().let { if (!it.contains(".")) "sensor.$it" else it }]
-                val s2 = allStates[prefs.sensor2Entity.trim().let { if (!it.contains(".")) "sensor.$it" else it }]
-                val s3 = allStates[prefs.sensor3Entity.trim().let { if (!it.contains(".")) "sensor.$it" else it }]
-
-                val b1 = allStates[prefs.button1Entity.trim().let { if (!it.contains(".")) "switch.$it" else it }]
-                val b2 = allStates[prefs.button2Entity.trim().let { if (!it.contains(".")) "switch.$it" else it }]
-                val b3 = allStates[prefs.button3Entity.trim().let { if (!it.contains(".")) "switch.$it" else it }]
-                val b4 = allStates[prefs.button4Entity.trim().let { if (!it.contains(".")) "switch.$it" else it }]
+                val b1 = withTimeoutOrNull(3000) { api.fetchEntityState(prefs.button1Entity) }
+                val b2 = withTimeoutOrNull(3000) { api.fetchEntityState(prefs.button2Entity) }
+                val b3 = withTimeoutOrNull(3000) { api.fetchEntityState(prefs.button3Entity) }
+                val b4 = withTimeoutOrNull(3000) { api.fetchEntityState(prefs.button4Entity) }
 
                 s1Val = formatSensorVal(s1?.state, prefs.sensor1Unit)
                 s2Val = formatSensorVal(s2?.state, prefs.sensor2Unit)
@@ -82,7 +80,7 @@ class HaCompositeWidget : GlanceAppWidget() {
                 b3On = b3?.state == "on"
                 b4On = b4?.state == "on"
 
-                // 2. Fetch camera snapshot non-blockingly last (protected by 4s timeout)
+                // Fetch camera snapshot non-blockingly last (protected by 4s timeout)
                 cameraBitmap = withTimeoutOrNull(4000) {
                     api.fetchCameraSnapshot(prefs.cameraEntity)
                 }
