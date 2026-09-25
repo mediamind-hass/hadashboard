@@ -2,6 +2,7 @@ package com.example.myapplication.widget
 
 import android.content.Context
 import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
@@ -41,6 +42,8 @@ import com.example.myapplication.data.HaPreferences
 import com.example.myapplication.data.HomeAssistantApi
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withTimeoutOrNull
+import java.io.File
+import java.io.FileOutputStream
 
 class HaCompositeWidget : GlanceAppWidget() {
 
@@ -50,52 +53,68 @@ class HaCompositeWidget : GlanceAppWidget() {
         val prefs = HaPreferences(context)
         val api = HomeAssistantApi(prefs)
 
-        var cameraBitmap: Bitmap? = null
-        var s1Val = "---"
-        var s2Val = "---"
-        var s3Val = "---"
+        // 1. Initialize immediately from local cache for instant zero-latency display
+        var cameraBitmap: Bitmap? = loadCachedCameraBitmap(context)
+        var s1Val = prefs.cachedSensor1Val
+        var s2Val = prefs.cachedSensor2Val
+        var s3Val = prefs.cachedSensor3Val
 
-        var b1On = false
-        var b2On = false
-        var b3On = false
-        var b4On = false
+        var b1On = prefs.cachedButton1On
+        var b2On = prefs.cachedButton2On
+        var b3On = prefs.cachedButton3On
+        var b4On = prefs.cachedButton4On
 
         if (prefs.isConfigured) {
             try {
                 // 0. Warm up VPN / port-forward tunnel to wake up the socket route
-                api.testConnectionDetailed()
-                delay(100)
+                val testRes = api.testConnectionDetailed()
+                if (testRes == "OK") {
+                    delay(100)
 
-                // 1. Fetch individual entity states sequentially with pacing delay
-                val s1 = withTimeoutOrNull(3000) { api.fetchEntityState(prefs.sensor1Entity) }
-                delay(100)
-                val s2 = withTimeoutOrNull(3000) { api.fetchEntityState(prefs.sensor2Entity) }
-                delay(100)
-                val s3 = withTimeoutOrNull(3000) { api.fetchEntityState(prefs.sensor3Entity) }
-                delay(100)
+                    // 1. Fetch individual entity states sequentially with pacing delay
+                    val s1 = withTimeoutOrNull(3000) { api.fetchEntityState(prefs.sensor1Entity) }
+                    delay(100)
+                    val s2 = withTimeoutOrNull(3000) { api.fetchEntityState(prefs.sensor2Entity) }
+                    delay(100)
+                    val s3 = withTimeoutOrNull(3000) { api.fetchEntityState(prefs.sensor3Entity) }
+                    delay(100)
 
-                val b1 = withTimeoutOrNull(3000) { api.fetchEntityState(prefs.button1Entity) }
-                delay(100)
-                val b2 = withTimeoutOrNull(3000) { api.fetchEntityState(prefs.button2Entity) }
-                delay(100)
-                val b3 = withTimeoutOrNull(3000) { api.fetchEntityState(prefs.button3Entity) }
-                delay(100)
-                val b4 = withTimeoutOrNull(3000) { api.fetchEntityState(prefs.button4Entity) }
-                delay(100)
+                    val b1 = withTimeoutOrNull(3000) { api.fetchEntityState(prefs.button1Entity) }
+                    delay(100)
+                    val b2 = withTimeoutOrNull(3000) { api.fetchEntityState(prefs.button2Entity) }
+                    delay(100)
+                    val b3 = withTimeoutOrNull(3000) { api.fetchEntityState(prefs.button3Entity) }
+                    delay(100)
+                    val b4 = withTimeoutOrNull(3000) { api.fetchEntityState(prefs.button4Entity) }
+                    delay(100)
 
-                s1Val = formatSensorVal(s1?.state, prefs.sensor1Unit)
-                s2Val = formatSensorVal(s2?.state, prefs.sensor2Unit)
-                s3Val = formatSensorVal(s3?.state, prefs.sensor3Unit)
+                    s1Val = formatSensorVal(s1?.state, prefs.sensor1Unit)
+                    s2Val = formatSensorVal(s2?.state, prefs.sensor2Unit)
+                    s3Val = formatSensorVal(s3?.state, prefs.sensor3Unit)
 
-                val activeStates = listOf("on", "active", "playing", "true")
-                b1On = activeStates.contains(b1?.state?.lowercase())
-                b2On = activeStates.contains(b2?.state?.lowercase())
-                b3On = activeStates.contains(b3?.state?.lowercase())
-                b4On = activeStates.contains(b4?.state?.lowercase())
+                    val activeStates = listOf("on", "active", "playing", "true")
+                    b1On = activeStates.contains(b1?.state?.lowercase())
+                    b2On = activeStates.contains(b2?.state?.lowercase())
+                    b3On = activeStates.contains(b3?.state?.lowercase())
+                    b4On = activeStates.contains(b4?.state?.lowercase())
 
-                // 2. Fetch camera snapshot non-blockingly last (protected by 4s timeout)
-                cameraBitmap = withTimeoutOrNull(4000) {
-                    api.fetchCameraSnapshot(prefs.cameraEntity)
+                    // Save to cache
+                    prefs.cachedSensor1Val = s1Val
+                    prefs.cachedSensor2Val = s2Val
+                    prefs.cachedSensor3Val = s3Val
+                    prefs.cachedButton1On = b1On
+                    prefs.cachedButton2On = b2On
+                    prefs.cachedButton3On = b3On
+                    prefs.cachedButton4On = b4On
+
+                    // 2. Fetch camera snapshot non-blockingly last (protected by 4s timeout)
+                    val freshCam = withTimeoutOrNull(4000) {
+                        api.fetchCameraSnapshot(prefs.cameraEntity)
+                    }
+                    if (freshCam != null) {
+                        cameraBitmap = freshCam
+                        saveCachedCameraBitmap(context, freshCam)
+                    }
                 }
             } catch (e: Exception) {
                 e.printStackTrace()
@@ -385,5 +404,28 @@ class HaCompositeWidget : GlanceAppWidget() {
                 fontWeight = FontWeight.Bold
             )
         )
+    }
+
+    private fun loadCachedCameraBitmap(context: Context): Bitmap? {
+        return try {
+            val file = File(context.cacheDir, "camera_cache.jpg")
+            if (file.exists()) {
+                BitmapFactory.decodeFile(file.absolutePath)
+            } else {
+                null
+            }
+        } catch (_: Exception) {
+            null
+        }
+    }
+
+    private fun saveCachedCameraBitmap(context: Context, bitmap: Bitmap) {
+        try {
+            val file = File(context.cacheDir, "camera_cache.jpg")
+            FileOutputStream(file).use { out ->
+                bitmap.compress(Bitmap.CompressFormat.JPEG, 90, out)
+            }
+        } catch (_: Exception) {
+        }
     }
 }

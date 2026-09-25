@@ -98,4 +98,33 @@ class HaPreferences(context: Context) {
 
     val isConfigured: Boolean
         get() = serverUrl.isNotBlank() && token.isNotBlank()
+
+    // Cached values for offline/cold-start resilience
+    var cachedSensor1Val: String
+        get() = prefs.getString("cached_s1", "---") ?: "---"
+        set(value) = prefs.edit().putString("cached_s1", value).apply()
+
+    var cachedSensor2Val: String
+        get() = prefs.getString("cached_s2", "---") ?: "---"
+        set(value) = prefs.edit().putString("cached_s2", value).apply()
+
+    var cachedSensor3Val: String
+        get() = prefs.getString("cached_s3", "---") ?: "---"
+        set(value) = prefs.edit().putString("cached_s3", value).apply()
+
+    var cachedButton1On: Boolean
+        get() = prefs.getBoolean("cached_b1", false)
+        set(value) = prefs.edit().putBoolean("cached_b1", value).apply()
+
+    var cachedButton2On: Boolean
+        get() = prefs.getBoolean("cached_b2", false)
+        set(value) = prefs.edit().putBoolean("cached_b2", value).apply()
+
+    var cachedButton3On: Boolean
+        get() = prefs.getBoolean("cached_b3", false)
+        set(value) = prefs.edit().putBoolean("cached_b3", value).apply()
+
+    var cachedButton4On: Boolean
+        get() = prefs.getBoolean("cached_b4", false)
+        set(value) = prefs.edit().putBoolean("cached_b4", value).apply()
 }
