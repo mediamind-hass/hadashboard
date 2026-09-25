@@ -39,6 +39,7 @@ import androidx.glance.text.Text
 import androidx.glance.text.TextStyle
 import com.example.myapplication.data.HaPreferences
 import com.example.myapplication.data.HomeAssistantApi
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.withTimeoutOrNull
 
 class HaCompositeWidget : GlanceAppWidget() {
@@ -61,6 +62,10 @@ class HaCompositeWidget : GlanceAppWidget() {
 
         if (prefs.isConfigured) {
             try {
+                // 0. Warm up network / VPN socket stack before fetching widget data
+                api.testConnectionDetailed()
+                delay(100)
+
                 // 1. Fetch all widget states in 1 single POST /api/template request (opens only 1 TCP connection)
                 val widgetStates = api.fetchWidgetStates()
 
