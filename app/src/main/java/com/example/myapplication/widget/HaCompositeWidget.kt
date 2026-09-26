@@ -9,6 +9,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.isSpecified
 import androidx.compose.ui.unit.sp
+import androidx.datastore.preferences.core.Preferences
+import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.glance.Button
 import androidx.glance.ButtonDefaults
 import androidx.glance.GlanceId
@@ -25,6 +27,7 @@ import androidx.glance.appwidget.cornerRadius
 import androidx.glance.appwidget.provideContent
 import androidx.glance.background
 import androidx.glance.color.ColorProvider
+import androidx.glance.currentState
 import androidx.glance.layout.Alignment
 import androidx.glance.layout.Box
 import androidx.glance.layout.Column
@@ -47,6 +50,8 @@ import java.io.FileOutputStream
 class HaCompositeWidget : GlanceAppWidget() {
 
     companion object {
+        val UPDATE_TIME_KEY = longPreferencesKey("last_widget_update_time")
+
         fun loadCachedCameraBitmap(context: Context): Bitmap? {
             return try {
                 val file = File(context.cacheDir, "camera_cache.jpg")
@@ -104,18 +109,22 @@ class HaCompositeWidget : GlanceAppWidget() {
 
         val prefs = HaPreferences(context)
 
-        // Read immediately from local cache for instant zero-latency UI rendering
-        val cameraBitmap: Bitmap? = loadCachedCameraBitmap(context)
-        val s1Val = prefs.cachedSensor1Val
-        val s2Val = prefs.cachedSensor2Val
-        val s3Val = prefs.cachedSensor3Val
-
-        val b1On = prefs.cachedButton1On
-        val b2On = prefs.cachedButton2On
-        val b3On = prefs.cachedButton3On
-        val b4On = prefs.cachedButton4On
-
         provideContent {
+            // Register Glance State DataStore dependency to trigger instant re-composition on state update
+            val glanceState = currentState<Preferences>()
+            val _triggerStateChange = glanceState[UPDATE_TIME_KEY] ?: 0L
+
+            // Read immediately from local cache for instant zero-latency UI rendering
+            val cameraBitmap: Bitmap? = loadCachedCameraBitmap(context)
+            val s1Val = prefs.cachedSensor1Val
+            val s2Val = prefs.cachedSensor2Val
+            val s3Val = prefs.cachedSensor3Val
+
+            val b1On = prefs.cachedButton1On
+            val b2On = prefs.cachedButton2On
+            val b3On = prefs.cachedButton3On
+            val b4On = prefs.cachedButton4On
+
             WidgetContent(
                 isConfigured = prefs.isConfigured,
                 cameraBitmap = cameraBitmap,

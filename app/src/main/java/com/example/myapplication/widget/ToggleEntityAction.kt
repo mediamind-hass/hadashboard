@@ -4,6 +4,7 @@ import android.content.Context
 import androidx.glance.GlanceId
 import androidx.glance.action.ActionParameters
 import androidx.glance.appwidget.action.ActionCallback
+import androidx.glance.appwidget.state.updateAppWidgetState
 import androidx.glance.appwidget.updateAll
 import com.example.myapplication.data.HaPreferences
 import com.example.myapplication.data.HomeAssistantApi
@@ -43,12 +44,19 @@ private suspend fun handleButtonToggle(context: Context, glanceId: GlanceId, but
         else -> ""
     }
 
-    // 1. Optimistic UI update: instantly toggle cached button state for zero-latency visual response
+    // 1. Optimistic UI update: instantly toggle cached button state in preferences
     when (buttonIndex) {
         1 -> prefs.cachedButton1On = !prefs.cachedButton1On
         2 -> prefs.cachedButton2On = !prefs.cachedButton2On
         3 -> prefs.cachedButton3On = !prefs.cachedButton3On
         4 -> prefs.cachedButton4On = !prefs.cachedButton4On
+    }
+    
+    // Update Glance State DataStore so Glance detects the state change and re-renders RemoteViews
+    updateAppWidgetState(context, glanceId) { state ->
+        state.toMutablePreferences().apply {
+            this[HaCompositeWidget.UPDATE_TIME_KEY] = System.currentTimeMillis()
+        }
     }
     HaCompositeWidget().update(context, glanceId)
 
@@ -81,7 +89,12 @@ private suspend fun handleButtonToggle(context: Context, glanceId: GlanceId, but
         }
     }
 
-    // 3. Force UI refresh with verified states
+    // 3. Force UI refresh with verified states by updating Glance State DataStore
+    updateAppWidgetState(context, glanceId) { state ->
+        state.toMutablePreferences().apply {
+            this[HaCompositeWidget.UPDATE_TIME_KEY] = System.currentTimeMillis()
+        }
+    }
     HaCompositeWidget().update(context, glanceId)
     HaCompositeWidget().updateAll(context)
 }
@@ -111,6 +124,11 @@ class RefreshWidgetAction : ActionCallback {
             HaCompositeWidget.saveCachedCameraBitmap(context, freshCam)
         }
 
+        updateAppWidgetState(context, glanceId) { state ->
+            state.toMutablePreferences().apply {
+                this[HaCompositeWidget.UPDATE_TIME_KEY] = System.currentTimeMillis()
+            }
+        }
         HaCompositeWidget().update(context, glanceId)
         HaCompositeWidget().updateAll(context)
     }
