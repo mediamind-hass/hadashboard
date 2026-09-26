@@ -21,10 +21,9 @@ suspend fun handleButtonAction(context: Context, glanceId: GlanceId, buttonIndex
     if (entityId.isNotBlank()) {
         val api = HomeAssistantApi(prefs)
         api.callEntityService(entityId, "toggle")
-        delay(400)
+        delay(500) // Give Home Assistant & smart switch time to execute before fetching updated state
     }
 
-    // Call updateAll only once to prevent duplicate parallel execution
     HaCompositeWidget().updateAll(context)
 }
 
@@ -58,8 +57,6 @@ class RefreshWidgetAction : ActionCallback {
         val prefs = HaPreferences(context)
         val api = HomeAssistantApi(prefs)
         api.testConnectionDetailed()
-        
-        // Call updateAll only once to prevent duplicate parallel execution
         HaCompositeWidget().updateAll(context)
     }
 }

@@ -19,7 +19,7 @@ import androidx.glance.ImageProvider
 import androidx.glance.LocalContext
 import androidx.glance.LocalSize
 import androidx.glance.action.Action
-import androidx.glance.appwidget.action.actionSendBroadcast
+import androidx.glance.appwidget.action.actionRunCallback
 import androidx.glance.appwidget.GlanceAppWidget
 import androidx.glance.appwidget.GlanceAppWidgetManager
 import androidx.glance.appwidget.SizeMode
@@ -206,21 +206,6 @@ class HaCompositeWidget : GlanceAppWidget() {
         b3Name: String, b3On: Boolean,
         b4Name: String, b4On: Boolean
     ) {
-        val context = LocalContext.current
-
-        val refreshIntent = Intent(context, HaActionReceiver::class.java).apply {
-            action = HaActionReceiver.ACTION_REFRESH
-        }
-        val refreshAction = actionSendBroadcast(refreshIntent)
-
-        fun getToggleAction(index: Int): Action {
-            val intent = Intent(context, HaActionReceiver::class.java).apply {
-                action = HaActionReceiver.ACTION_TOGGLE
-                putExtra(HaActionReceiver.EXTRA_BUTTON_INDEX, index)
-            }
-            return actionSendBroadcast(intent)
-        }
-
         val size = LocalSize.current
         val totalWidth = if (size.width.isSpecified && size.width > 0.dp) size.width else 250.dp
 
@@ -296,7 +281,7 @@ class HaCompositeWidget : GlanceAppWidget() {
                     ) {
                         Button(
                             text = "🔄",
-                            onClick = refreshAction,
+                            onClick = actionRunCallback<RefreshWidgetAction>(),
                             colors = ButtonDefaults.buttonColors(
                                 backgroundColor = ColorProvider(day = Color(0xAA000000), night = Color(0xAA000000)),
                                 contentColor = ColorProvider(day = textColor, night = textColor)
@@ -361,7 +346,7 @@ class HaCompositeWidget : GlanceAppWidget() {
                     activeBg = activeBtnBg,
                     inactiveBg = inactiveBtnBg,
                     textColor = textColor,
-                    onClickAction = getToggleAction(1),
+                    onClickAction = actionRunCallback<Button1Action>(),
                     modifier = GlanceModifier.defaultWeight().fillMaxHeight()
                 )
                 Spacer(modifier = GlanceModifier.width(2.dp))
@@ -371,7 +356,7 @@ class HaCompositeWidget : GlanceAppWidget() {
                     activeBg = activeBtnBg,
                     inactiveBg = inactiveBtnBg,
                     textColor = textColor,
-                    onClickAction = getToggleAction(2),
+                    onClickAction = actionRunCallback<Button2Action>(),
                     modifier = GlanceModifier.defaultWeight().fillMaxHeight()
                 )
                 Spacer(modifier = GlanceModifier.width(2.dp))
@@ -381,7 +366,7 @@ class HaCompositeWidget : GlanceAppWidget() {
                     activeBg = activeBtnBg,
                     inactiveBg = inactiveBtnBg,
                     textColor = textColor,
-                    onClickAction = getToggleAction(3),
+                    onClickAction = actionRunCallback<Button3Action>(),
                     modifier = GlanceModifier.defaultWeight().fillMaxHeight()
                 )
                 Spacer(modifier = GlanceModifier.width(2.dp))
@@ -391,7 +376,7 @@ class HaCompositeWidget : GlanceAppWidget() {
                     activeBg = activeBtnBg,
                     inactiveBg = inactiveBtnBg,
                     textColor = textColor,
-                    onClickAction = getToggleAction(4),
+                    onClickAction = actionRunCallback<Button4Action>(),
                     modifier = GlanceModifier.defaultWeight().fillMaxHeight()
                 )
             }
