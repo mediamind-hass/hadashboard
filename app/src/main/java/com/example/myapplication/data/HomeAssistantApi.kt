@@ -166,29 +166,33 @@ class HomeAssistantApi(private val prefs: HaPreferences) {
 
     suspend fun callEntityService(rawEntityId: String, actionService: String = "toggle"): Boolean = withContext(Dispatchers.IO) {
         val start = System.currentTimeMillis()
-        val entityId = formatEntity(rawEntityId, "switch")
-        val parts = entityId.split(".", limit = 2)
-        if (parts.size < 2) return@withContext false
-        val domain = parts[0]
-
-        val serviceToCall = when (domain) {
-            "button" -> "press"
-            "script", "scene" -> "turn_on"
-            else -> actionService
-        }
-
         try {
+            Log.d("ApiPerf", "callEntityService started for rawEntityId: $rawEntityId")
+            val entityId = formatEntity(rawEntityId, "switch")
+            val parts = entityId.split(".", limit = 2)
+            if (parts.size < 2) return@withContext false
+            val domain = parts[0]
+
+            val serviceToCall = when (domain) {
+                "button" -> "press"
+                "script", "scene" -> "turn_on"
+                else -> actionService
+            }
+
+            Log.d("ApiPerf", "callEntityService domain: $domain, serviceToCall: $serviceToCall, entityId: $entityId")
             val jsonBody = JSONObject().apply { put("entity_id", entityId) }
             val requestBody = jsonBody.toString().toRequestBody("application/json; charset=utf-8".toMediaType())
             val reqBuilder = buildRequest("/api/services/$domain/$serviceToCall") ?: return@withContext false
+            
+            Log.d("ApiPerf", "callEntityService executing network call")
             client.newCall(reqBuilder.post(requestBody).build()).execute().use { response ->
                 val duration = System.currentTimeMillis() - start
-                Log.d("ApiPerf", "callEntityService $domain/$serviceToCall for $entityId result: ${response.isSuccessful} in ${duration}ms")
+                Log.d("ApiPerf", "callEntityService result: ${response.isSuccessful} in ${duration}ms")
                 response.isSuccessful
             }
         } catch (e: Throwable) {
             val duration = System.currentTimeMillis() - start
-            Log.e("ApiPerf", "callEntityService for $entityId threw ${e.javaClass.simpleName}: ${e.message} after ${duration}ms", e)
+            Log.e("ApiPerf", "callEntityService threw ${e.javaClass.simpleName}: ${e.message} after ${duration}ms", e)
             false
         }
     }
