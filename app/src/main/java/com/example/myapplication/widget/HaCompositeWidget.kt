@@ -107,39 +107,20 @@ class HaCompositeWidget : GlanceAppWidget() {
             if (!isRecent) {
                 lastFetchTimestamp = now
                 try {
-                    // 0. Warm up VPN / port-forward tunnel to wake up the socket route
-                    val testRes = api.testConnectionDetailed()
-                    if (testRes == "OK") {
-                        delay(100)
-
-                        // 1. Fetch individual entity states sequentially with pacing delay
-                        val s1 = withTimeoutOrNull(3000) { api.fetchEntityState(prefs.sensor1Entity) }
-                        delay(100)
-                        val s2 = withTimeoutOrNull(3000) { api.fetchEntityState(prefs.sensor2Entity) }
-                        delay(100)
-                        val s3 = withTimeoutOrNull(3000) { api.fetchEntityState(prefs.sensor3Entity) }
-                        delay(100)
-
-                        val b1 = withTimeoutOrNull(3000) { api.fetchEntityState(prefs.button1Entity) }
-                        delay(100)
-                        val b2 = withTimeoutOrNull(3000) { api.fetchEntityState(prefs.button2Entity) }
-                        delay(100)
-                        val b3 = withTimeoutOrNull(3000) { api.fetchEntityState(prefs.button3Entity) }
-                        delay(100)
-                        val b4 = withTimeoutOrNull(3000) { api.fetchEntityState(prefs.button4Entity) }
-                        delay(100)
-
-                        s1Val = formatSensorVal(s1?.state, prefs.sensor1Unit)
-                        s2Val = formatSensorVal(s2?.state, prefs.sensor2Unit)
-                        s3Val = formatSensorVal(s3?.state, prefs.sensor3Unit)
+                    // Fetch all 7 widget entity states in a single POST request to /api/template (~200ms)
+                    val widgetStates = withTimeoutOrNull(4000) { api.fetchWidgetStates() }
+                    if (widgetStates != null && widgetStates.s1 != "---") {
+                        s1Val = formatSensorVal(widgetStates.s1, prefs.sensor1Unit)
+                        s2Val = formatSensorVal(widgetStates.s2, prefs.sensor2Unit)
+                        s3Val = formatSensorVal(widgetStates.s3, prefs.sensor3Unit)
 
                         val activeStates = listOf("on", "active", "playing", "true")
-                        b1On = activeStates.contains(b1?.state?.lowercase())
-                        b2On = activeStates.contains(b2?.state?.lowercase())
-                        b3On = activeStates.contains(b3?.state?.lowercase())
-                        b4On = activeStates.contains(b4?.state?.lowercase())
+                        b1On = activeStates.contains(widgetStates.b1.lowercase())
+                        b2On = activeStates.contains(widgetStates.b2.lowercase())
+                        b3On = activeStates.contains(widgetStates.b3.lowercase())
+                        b4On = activeStates.contains(widgetStates.b4.lowercase())
 
-                        // Save to cache
+                        // Save to persistent cache
                         prefs.cachedSensor1Val = s1Val
                         prefs.cachedSensor2Val = s2Val
                         prefs.cachedSensor3Val = s3Val
@@ -147,15 +128,15 @@ class HaCompositeWidget : GlanceAppWidget() {
                         prefs.cachedButton2On = b2On
                         prefs.cachedButton3On = b3On
                         prefs.cachedButton4On = b4On
+                    }
 
-                        // 2. Fetch camera snapshot non-blockingly last (protected by 4s timeout)
-                        val freshCam = withTimeoutOrNull(4000) {
-                            api.fetchCameraSnapshot(prefs.cameraEntity)
-                        }
-                        if (freshCam != null) {
-                            cameraBitmap = freshCam
-                            saveCachedCameraBitmap(context, freshCam)
-                        }
+                    // Fetch camera snapshot non-blockingly last
+                    val freshCam = withTimeoutOrNull(4000) {
+                        api.fetchCameraSnapshot(prefs.cameraEntity)
+                    }
+                    if (freshCam != null) {
+                        cameraBitmap = freshCam
+                        saveCachedCameraBitmap(context, freshCam)
                     }
                 } catch (e: Exception) {
                     e.printStackTrace()
