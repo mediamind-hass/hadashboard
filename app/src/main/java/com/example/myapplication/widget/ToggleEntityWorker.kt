@@ -55,7 +55,6 @@ class ToggleEntityWorker(
                 3 -> prefs.cachedButton3On = !prefs.cachedButton3On
                 4 -> prefs.cachedButton4On = !prefs.cachedButton4On
             }
-            HaCompositeWidget.resetLastFetchTimestamp()
             HaCompositeWidget().updateAll(applicationContext)
 
             // 2. Perform remote service call
@@ -79,7 +78,6 @@ class ToggleEntityWorker(
                     }
                 }
             }
-            HaCompositeWidget.resetLastFetchTimestamp()
             HaCompositeWidget().updateAll(applicationContext)
             Result.success()
         } catch (e: Exception) {

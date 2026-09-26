@@ -43,14 +43,13 @@ private suspend fun handleButtonToggle(context: Context, glanceId: GlanceId, but
         else -> ""
     }
 
-    // 1. Optimistic UI update: instantly toggle cached button state for zero-latency visual feedback
+    // 1. Optimistic UI update: instantly toggle cached button state for zero-latency visual response
     when (buttonIndex) {
         1 -> prefs.cachedButton1On = !prefs.cachedButton1On
         2 -> prefs.cachedButton2On = !prefs.cachedButton2On
         3 -> prefs.cachedButton3On = !prefs.cachedButton3On
         4 -> prefs.cachedButton4On = !prefs.cachedButton4On
     }
-    HaCompositeWidget.resetLastFetchTimestamp()
     HaCompositeWidget().update(context, glanceId)
 
     // 2. Perform network service call and run the "Salva e Verifica" pipeline
@@ -83,7 +82,6 @@ private suspend fun handleButtonToggle(context: Context, glanceId: GlanceId, but
     }
 
     // 3. Force UI refresh with verified states
-    HaCompositeWidget.resetLastFetchTimestamp()
     HaCompositeWidget().update(context, glanceId)
     HaCompositeWidget().updateAll(context)
 }
@@ -113,7 +111,6 @@ class RefreshWidgetAction : ActionCallback {
             HaCompositeWidget.saveCachedCameraBitmap(context, freshCam)
         }
 
-        HaCompositeWidget.resetLastFetchTimestamp()
         HaCompositeWidget().update(context, glanceId)
         HaCompositeWidget().updateAll(context)
     }

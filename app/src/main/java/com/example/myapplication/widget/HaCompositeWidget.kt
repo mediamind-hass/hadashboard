@@ -41,20 +41,12 @@ import androidx.glance.text.FontWeight
 import androidx.glance.text.Text
 import androidx.glance.text.TextStyle
 import com.example.myapplication.data.HaPreferences
-import com.example.myapplication.data.HomeAssistantApi
-import kotlinx.coroutines.withTimeoutOrNull
 import java.io.File
 import java.io.FileOutputStream
 
 class HaCompositeWidget : GlanceAppWidget() {
 
     companion object {
-        private var lastFetchTimestamp = 0L
-
-        fun resetLastFetchTimestamp() {
-            lastFetchTimestamp = 0L
-        }
-
         fun loadCachedCameraBitmap(context: Context): Bitmap? {
             return try {
                 val file = File(context.cacheDir, "camera_cache.jpg")
@@ -111,62 +103,17 @@ class HaCompositeWidget : GlanceAppWidget() {
         }
 
         val prefs = HaPreferences(context)
-        val api = HomeAssistantApi(prefs)
 
-        // 1. Initialize immediately from local cache for instant zero-latency display
-        var cameraBitmap: Bitmap? = loadCachedCameraBitmap(context)
-        var s1Val = prefs.cachedSensor1Val
-        var s2Val = prefs.cachedSensor2Val
-        var s3Val = prefs.cachedSensor3Val
+        // Read immediately from local cache for instant zero-latency UI rendering
+        val cameraBitmap: Bitmap? = loadCachedCameraBitmap(context)
+        val s1Val = prefs.cachedSensor1Val
+        val s2Val = prefs.cachedSensor2Val
+        val s3Val = prefs.cachedSensor3Val
 
-        var b1On = prefs.cachedButton1On
-        var b2On = prefs.cachedButton2On
-        var b3On = prefs.cachedButton3On
-        var b4On = prefs.cachedButton4On
-
-        if (prefs.isConfigured) {
-            val now = System.currentTimeMillis()
-            val isRecent = (now - lastFetchTimestamp) < 2000 // 2 seconds debounce against duplicate instance updates
-            
-            if (!isRecent) {
-                lastFetchTimestamp = now
-                try {
-                    // Fetch all 7 widget entity states in a single POST request to /api/template (~200ms)
-                    val widgetStates = withTimeoutOrNull(4000) { api.fetchWidgetStates() }
-                    if (widgetStates != null && widgetStates.s1 != "---") {
-                        s1Val = formatSensorVal(widgetStates.s1, prefs.sensor1Unit)
-                        s2Val = formatSensorVal(widgetStates.s2, prefs.sensor2Unit)
-                        s3Val = formatSensorVal(widgetStates.s3, prefs.sensor3Unit)
-
-                        val activeStates = listOf("on", "active", "playing", "true")
-                        b1On = activeStates.contains(widgetStates.b1.lowercase())
-                        b2On = activeStates.contains(widgetStates.b2.lowercase())
-                        b3On = activeStates.contains(widgetStates.b3.lowercase())
-                        b4On = activeStates.contains(widgetStates.b4.lowercase())
-
-                        // Save to persistent cache
-                        prefs.cachedSensor1Val = s1Val
-                        prefs.cachedSensor2Val = s2Val
-                        prefs.cachedSensor3Val = s3Val
-                        prefs.cachedButton1On = b1On
-                        prefs.cachedButton2On = b2On
-                        prefs.cachedButton3On = b3On
-                        prefs.cachedButton4On = b4On
-                    }
-
-                    // Fetch camera snapshot non-blockingly last
-                    val freshCam = withTimeoutOrNull(4000) {
-                        api.fetchCameraSnapshot(prefs.cameraEntity)
-                    }
-                    if (freshCam != null) {
-                        cameraBitmap = freshCam
-                        saveCachedCameraBitmap(context, freshCam)
-                    }
-                } catch (e: Exception) {
-                    e.printStackTrace()
-                }
-            }
-        }
+        val b1On = prefs.cachedButton1On
+        val b2On = prefs.cachedButton2On
+        val b3On = prefs.cachedButton3On
+        val b4On = prefs.cachedButton4On
 
         provideContent {
             WidgetContent(
@@ -188,15 +135,6 @@ class HaCompositeWidget : GlanceAppWidget() {
                 b4On = b4On
             )
         }
-    }
-
-    private fun formatSensorVal(raw: String?, unit: String): String {
-        if (raw == null || raw == "N/A" || raw == "unavailable") return "---"
-        val trimmedRaw = raw.trim()
-        val trimmedUnit = unit.trim()
-        if (trimmedUnit.isEmpty()) return trimmedRaw
-        if (trimmedRaw.endsWith(trimmedUnit, ignoreCase = true)) return trimmedRaw
-        return "$trimmedRaw $trimmedUnit"
     }
 
     @Composable
