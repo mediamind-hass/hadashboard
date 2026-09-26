@@ -35,9 +35,10 @@ class HomeAssistantApi(private val prefs: HaPreferences) {
 
     companion object {
         private val client = OkHttpClient.Builder()
-            .connectTimeout(15, TimeUnit.SECONDS)
-            .readTimeout(15, TimeUnit.SECONDS)
-            .connectionPool(ConnectionPool(0, 1, TimeUnit.SECONDS))
+            .connectTimeout(5, TimeUnit.SECONDS)
+            .readTimeout(10, TimeUnit.SECONDS)
+            .writeTimeout(10, TimeUnit.SECONDS)
+            .connectionPool(ConnectionPool(5, 1, TimeUnit.MINUTES))
             .retryOnConnectionFailure(true)
             .dispatcher(Dispatcher().apply {
                 maxRequests = 32
@@ -138,63 +139,78 @@ class HomeAssistantApi(private val prefs: HaPreferences) {
     }
 
     suspend fun fetchEntityState(rawEntityId: String): EntityStateResult? = withContext(Dispatchers.IO) {
-        val start = System.currentTimeMillis()
         val entityId = formatEntity(rawEntityId, "sensor")
-        try {
-            val reqBuilder = buildRequest("/api/states/$entityId") ?: return@withContext null
-            client.newCall(reqBuilder.get().build()).execute().use { response ->
-                val duration = System.currentTimeMillis() - start
-                if (!response.isSuccessful) {
-                    Log.w("ApiPerf", "fetchEntityState $entityId failed: HTTP ${response.code} in ${duration}ms")
-                    return@withContext null
+        val maxAttempts = 2
+        for (attempt in 0 until maxAttempts) {
+            val start = System.currentTimeMillis()
+            try {
+                val reqBuilder = buildRequest("/api/states/$entityId") ?: return@withContext null
+                val result = client.newCall(reqBuilder.get().build()).execute().use { response ->
+                    val duration = System.currentTimeMillis() - start
+                    if (!response.isSuccessful) {
+                        Log.w("ApiPerf", "fetchEntityState $entityId failed: HTTP ${response.code} in ${duration}ms")
+                        null
+                    } else {
+                        val bodyStr = response.body?.string() ?: return@use null
+                        val json = JSONObject(bodyStr)
+                        val state = json.optString("state", "N/A")
+                        val attributes = json.optJSONObject("attributes")
+                        val unit = attributes?.optString("unit_of_measurement")
+                        val friendlyName = attributes?.optString("friendly_name")
+                        Log.d("ApiPerf", "fetchEntityState $entityId succeeded in ${duration}ms (state: $state)")
+                        EntityStateResult(entityId, state, unit, friendlyName)
+                    }
                 }
-                val bodyStr = response.body?.string() ?: return@withContext null
-                val json = JSONObject(bodyStr)
-                val state = json.optString("state", "N/A")
-                val attributes = json.optJSONObject("attributes")
-                val unit = attributes?.optString("unit_of_measurement")
-                val friendlyName = attributes?.optString("friendly_name")
-                Log.d("ApiPerf", "fetchEntityState $entityId succeeded in ${duration}ms (state: $state)")
-                EntityStateResult(entityId, state, unit, friendlyName)
+                if (result != null) return@withContext result
+            } catch (e: Exception) {
+                val duration = System.currentTimeMillis() - start
+                Log.w("ApiPerf", "fetchEntityState $entityId attempt ${attempt + 1} failed: ${e.message} after ${duration}ms")
             }
-        } catch (e: Exception) {
-            val duration = System.currentTimeMillis() - start
-            Log.e("ApiPerf", "fetchEntityState $entityId threw ${e.javaClass.simpleName}: ${e.message} after ${duration}ms")
-            null
+            if (attempt < maxAttempts - 1) {
+                try { Thread.sleep(500) } catch (_: InterruptedException) {}
+            }
         }
+        null
     }
 
     suspend fun callEntityService(rawEntityId: String, actionService: String = "toggle"): Boolean = withContext(Dispatchers.IO) {
-        val start = System.currentTimeMillis()
-        try {
-            Log.d("ApiPerf", "callEntityService started for rawEntityId: $rawEntityId")
-            val entityId = formatEntity(rawEntityId, "switch")
-            val parts = entityId.split(".", limit = 2)
-            if (parts.size < 2) return@withContext false
-            val domain = parts[0]
+        val maxAttempts = 2
+        val entityId = formatEntity(rawEntityId, "switch")
+        val parts = entityId.split(".", limit = 2)
+        if (parts.size < 2) return@withContext false
+        val domain = parts[0]
 
-            val serviceToCall = when (domain) {
-                "button" -> "press"
-                "script", "scene" -> "turn_on"
-                else -> actionService
-            }
-
-            Log.d("ApiPerf", "callEntityService domain: $domain, serviceToCall: $serviceToCall, entityId: $entityId")
-            val jsonBody = JSONObject().apply { put("entity_id", entityId) }
-            val requestBody = jsonBody.toString().toRequestBody("application/json; charset=utf-8".toMediaType())
-            val reqBuilder = buildRequest("/api/services/$domain/$serviceToCall") ?: return@withContext false
-            
-            Log.d("ApiPerf", "callEntityService executing network call")
-            client.newCall(reqBuilder.post(requestBody).build()).execute().use { response ->
-                val duration = System.currentTimeMillis() - start
-                Log.d("ApiPerf", "callEntityService result: ${response.isSuccessful} in ${duration}ms")
-                response.isSuccessful
-            }
-        } catch (e: Throwable) {
-            val duration = System.currentTimeMillis() - start
-            Log.e("ApiPerf", "callEntityService threw ${e.javaClass.simpleName}: ${e.message} after ${duration}ms", e)
-            false
+        val serviceToCall = when (domain) {
+            "button" -> "press"
+            "script", "scene" -> "turn_on"
+            else -> actionService
         }
+
+        for (attempt in 0 until maxAttempts) {
+            val start = System.currentTimeMillis()
+            try {
+                Log.d("ApiPerf", "callEntityService started for rawEntityId: $rawEntityId (attempt ${attempt + 1})")
+                Log.d("ApiPerf", "callEntityService domain: $domain, serviceToCall: $serviceToCall, entityId: $entityId")
+                val jsonBody = JSONObject().apply { put("entity_id", entityId) }
+                val requestBody = jsonBody.toString().toRequestBody("application/json; charset=utf-8".toMediaType())
+                val reqBuilder = buildRequest("/api/services/$domain/$serviceToCall") ?: return@withContext false
+                
+                Log.d("ApiPerf", "callEntityService executing network call")
+                val isSuccess = client.newCall(reqBuilder.post(requestBody).build()).execute().use { response ->
+                    val duration = System.currentTimeMillis() - start
+                    Log.d("ApiPerf", "callEntityService result: ${response.isSuccessful} in ${duration}ms")
+                    response.isSuccessful
+                }
+                if (isSuccess) return@withContext true
+            } catch (e: Throwable) {
+                val duration = System.currentTimeMillis() - start
+                Log.w("ApiPerf", "callEntityService attempt ${attempt + 1} failed (${e.javaClass.simpleName}): ${e.message} after ${duration}ms")
+            }
+            if (attempt < maxAttempts - 1) {
+                try { Thread.sleep(500) } catch (_: InterruptedException) {}
+            }
+        }
+        false
     }
 
     suspend fun fetchCameraSnapshot(rawCameraEntityId: String): Bitmap? = withContext(Dispatchers.IO) {

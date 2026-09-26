@@ -2,8 +2,10 @@ package com.example.myapplication.widget
 
 import android.content.Context
 import androidx.glance.appwidget.updateAll
+import androidx.work.Constraints
 import androidx.work.CoroutineWorker
 import androidx.work.Data
+import androidx.work.NetworkType
 import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.WorkManager
 import androidx.work.WorkerParameters
@@ -20,10 +22,14 @@ class ToggleEntityWorker(
         private const val KEY_BUTTON_INDEX = "button_index"
 
         fun enqueue(context: Context, buttonIndex: Int) {
+            val constraints = Constraints.Builder()
+                .setRequiredNetworkType(NetworkType.CONNECTED)
+                .build()
             val data = Data.Builder()
                 .putInt(KEY_BUTTON_INDEX, buttonIndex)
                 .build()
             val request = OneTimeWorkRequestBuilder<ToggleEntityWorker>()
+                .setConstraints(constraints)
                 .setInputData(data)
                 .build()
             WorkManager.getInstance(context).enqueue(request)
