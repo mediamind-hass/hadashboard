@@ -52,7 +52,7 @@ private suspend fun handleButtonToggle(context: Context, glanceId: GlanceId, but
         4 -> prefs.cachedButton4On = !prefs.cachedButton4On
     }
     
-    // Update Glance State DataStore so Glance detects the state change and re-renders RemoteViews
+    // Immediate 1st optimistic update
     updateAppWidgetState(context, glanceId) { state ->
         state.toMutablePreferences().apply {
             this[HaCompositeWidget.UPDATE_TIME_KEY] = System.currentTimeMillis()
@@ -89,10 +89,19 @@ private suspend fun handleButtonToggle(context: Context, glanceId: GlanceId, but
         }
     }
 
-    // 3. Force UI refresh with verified states by updating Glance State DataStore
+    // 3. First pass verified update
     updateAppWidgetState(context, glanceId) { state ->
         state.toMutablePreferences().apply {
             this[HaCompositeWidget.UPDATE_TIME_KEY] = System.currentTimeMillis()
+        }
+    }
+    HaCompositeWidget().update(context, glanceId)
+
+    // 4. Automated second pass update (300ms delay) to force Launcher RemoteViews re-rendering
+    delay(300)
+    updateAppWidgetState(context, glanceId) { state ->
+        state.toMutablePreferences().apply {
+            this[HaCompositeWidget.UPDATE_TIME_KEY] = System.currentTimeMillis() + 1
         }
     }
     HaCompositeWidget().update(context, glanceId)
@@ -124,9 +133,19 @@ class RefreshWidgetAction : ActionCallback {
             HaCompositeWidget.saveCachedCameraBitmap(context, freshCam)
         }
 
+        // 1st pass update
         updateAppWidgetState(context, glanceId) { state ->
             state.toMutablePreferences().apply {
                 this[HaCompositeWidget.UPDATE_TIME_KEY] = System.currentTimeMillis()
+            }
+        }
+        HaCompositeWidget().update(context, glanceId)
+
+        // 2nd pass automated update (300ms delay) to bypass One UI launcher suppression
+        delay(300)
+        updateAppWidgetState(context, glanceId) { state ->
+            state.toMutablePreferences().apply {
+                this[HaCompositeWidget.UPDATE_TIME_KEY] = System.currentTimeMillis() + 1
             }
         }
         HaCompositeWidget().update(context, glanceId)
