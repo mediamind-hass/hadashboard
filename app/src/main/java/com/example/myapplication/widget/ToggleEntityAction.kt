@@ -5,7 +5,6 @@ import androidx.glance.GlanceId
 import androidx.glance.action.ActionParameters
 import androidx.glance.appwidget.action.ActionCallback
 import androidx.glance.appwidget.state.updateAppWidgetState
-import androidx.glance.appwidget.updateAll
 import com.example.myapplication.data.HaPreferences
 import com.example.myapplication.data.HomeAssistantApi
 import kotlinx.coroutines.delay
@@ -52,7 +51,7 @@ private suspend fun handleButtonToggle(context: Context, glanceId: GlanceId, but
         4 -> prefs.cachedButton4On = !prefs.cachedButton4On
     }
     
-    // Immediate 1st optimistic update
+    // Single optimistic update to Glance State DataStore (0ms latency feedback)
     updateAppWidgetState(context, glanceId) { state ->
         state.toMutablePreferences().apply {
             this[HaCompositeWidget.UPDATE_TIME_KEY] = System.currentTimeMillis()
@@ -89,23 +88,13 @@ private suspend fun handleButtonToggle(context: Context, glanceId: GlanceId, but
         }
     }
 
-    // 3. First pass verified update
+    // 3. Single confirmed update to Glance State DataStore
     updateAppWidgetState(context, glanceId) { state ->
         state.toMutablePreferences().apply {
             this[HaCompositeWidget.UPDATE_TIME_KEY] = System.currentTimeMillis()
         }
     }
     HaCompositeWidget().update(context, glanceId)
-
-    // 4. Automated second pass update (300ms delay) to force Launcher RemoteViews re-rendering
-    delay(300)
-    updateAppWidgetState(context, glanceId) { state ->
-        state.toMutablePreferences().apply {
-            this[HaCompositeWidget.UPDATE_TIME_KEY] = System.currentTimeMillis() + 1
-        }
-    }
-    HaCompositeWidget().update(context, glanceId)
-    HaCompositeWidget().updateAll(context)
 }
 
 class RefreshWidgetAction : ActionCallback {
@@ -133,23 +122,13 @@ class RefreshWidgetAction : ActionCallback {
             HaCompositeWidget.saveCachedCameraBitmap(context, freshCam)
         }
 
-        // 1st pass update
+        // Single clean Glance update
         updateAppWidgetState(context, glanceId) { state ->
             state.toMutablePreferences().apply {
                 this[HaCompositeWidget.UPDATE_TIME_KEY] = System.currentTimeMillis()
             }
         }
         HaCompositeWidget().update(context, glanceId)
-
-        // 2nd pass automated update (300ms delay) to bypass One UI launcher suppression
-        delay(300)
-        updateAppWidgetState(context, glanceId) { state ->
-            state.toMutablePreferences().apply {
-                this[HaCompositeWidget.UPDATE_TIME_KEY] = System.currentTimeMillis() + 1
-            }
-        }
-        HaCompositeWidget().update(context, glanceId)
-        HaCompositeWidget().updateAll(context)
     }
 }
 
