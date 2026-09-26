@@ -37,6 +37,10 @@
                 android:name="android.appwidget.provider"
                 android:resource="@xml/ha_widget_info" />
         </receiver>
+
+        <receiver
+            android:name=".widget.HaActionReceiver"
+            android:exported="true" />
     </application>
 
 </manifest>
