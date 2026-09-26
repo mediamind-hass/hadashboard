@@ -82,7 +82,7 @@ class HaPreferences(context: Context) {
 
     var button3Entity: String
         get() = prefs.getString("btn_3_entity", "switch.relay_3") ?: "switch.relay_3"
-        set(value) = prefs.edit().putString("btn_3_entity", value.trim()).apply()
+        set(value) = prefs.edit().putString("btn_3_name", value.trim()).apply()
 
     var button3Name: String
         get() = prefs.getString("btn_3_name", "Relè 3") ?: "Relè 3"
