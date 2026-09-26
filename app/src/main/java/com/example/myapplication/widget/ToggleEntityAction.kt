@@ -23,15 +23,18 @@ suspend fun handleButtonAction(context: Context, glanceId: GlanceId, buttonIndex
         }
         Log.d("ApiPerf", "handleButtonAction entityId: $entityId")
         if (entityId.isNotBlank()) {
+            Log.d("ApiPerf", "handleButtonAction about to instantiate HomeAssistantApi")
             val api = HomeAssistantApi(prefs)
+            Log.d("ApiPerf", "handleButtonAction about to call callEntityService")
             val success = api.callEntityService(entityId, "toggle")
             Log.d("ApiPerf", "handleButtonAction callEntityService success: $success")
             delay(500)
         }
+        Log.d("ApiPerf", "handleButtonAction about to call updateAll")
         HaCompositeWidget().updateAll(context)
         Log.d("ApiPerf", "handleButtonAction updateAll completed successfully")
-    } catch (e: Exception) {
-        Log.e("ApiPerf", "handleButtonAction crashed with exception", e)
+    } catch (e: Throwable) {
+        Log.e("ApiPerf", "handleButtonAction crashed with Throwable: ${e.message}", e)
     }
 }
 
@@ -73,8 +76,8 @@ class RefreshWidgetAction : ActionCallback {
             api.testConnectionDetailed()
             HaCompositeWidget().updateAll(context)
             Log.d("ApiPerf", "RefreshWidgetAction completed successfully")
-        } catch (e: Exception) {
-            Log.e("ApiPerf", "RefreshWidgetAction crashed with exception", e)
+        } catch (e: Throwable) {
+            Log.e("ApiPerf", "RefreshWidgetAction crashed with Throwable: ${e.message}", e)
         }
     }
 }

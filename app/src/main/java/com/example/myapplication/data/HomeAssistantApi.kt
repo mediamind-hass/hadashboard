@@ -186,9 +186,9 @@ class HomeAssistantApi(private val prefs: HaPreferences) {
                 Log.d("ApiPerf", "callEntityService $domain/$serviceToCall for $entityId result: ${response.isSuccessful} in ${duration}ms")
                 response.isSuccessful
             }
-        } catch (e: Exception) {
+        } catch (e: Throwable) {
             val duration = System.currentTimeMillis() - start
-            Log.e("ApiPerf", "callEntityService for $entityId threw ${e.javaClass.simpleName}: ${e.message} after ${duration}ms")
+            Log.e("ApiPerf", "callEntityService for $entityId threw ${e.javaClass.simpleName}: ${e.message} after ${duration}ms", e)
             false
         }
     }
