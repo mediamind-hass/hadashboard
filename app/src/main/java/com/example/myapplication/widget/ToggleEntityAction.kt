@@ -4,6 +4,7 @@ import android.content.Context
 import androidx.glance.GlanceId
 import androidx.glance.action.ActionParameters
 import androidx.glance.appwidget.action.ActionCallback
+import androidx.glance.appwidget.updateAll
 import com.example.myapplication.data.HaPreferences
 import com.example.myapplication.data.HomeAssistantApi
 import kotlinx.coroutines.delay
@@ -42,7 +43,7 @@ private suspend fun handleButtonToggle(context: Context, glanceId: GlanceId, but
         else -> ""
     }
 
-    // 1. Optimistic UI update: instantly toggle cached button state for zero-latency visual response
+    // 1. Optimistic UI update: instantly toggle cached button state for zero-latency visual feedback
     when (buttonIndex) {
         1 -> prefs.cachedButton1On = !prefs.cachedButton1On
         2 -> prefs.cachedButton2On = !prefs.cachedButton2On
@@ -52,37 +53,48 @@ private suspend fun handleButtonToggle(context: Context, glanceId: GlanceId, but
     HaCompositeWidget.resetLastFetchTimestamp()
     HaCompositeWidget().update(context, glanceId)
 
-    // 2. Perform network call directly in the Glance action thread
+    // 2. Perform network service call and run the "Salva e Verifica" pipeline
     if (entityId.isNotBlank()) {
         val api = HomeAssistantApi(prefs)
-        val success = api.callEntityService(entityId, "toggle")
         
-        // 3. Sync confirmed true states from Home Assistant
-        if (success) {
-            delay(200)
-            val widgetStates = api.fetchWidgetStates()
-            val activeStates = listOf("on", "active", "playing", "true")
-            if (widgetStates.s1 != "---") {
-                prefs.cachedSensor1Val = formatSensorVal(widgetStates.s1, prefs.sensor1Unit)
-                prefs.cachedSensor2Val = formatSensorVal(widgetStates.s2, prefs.sensor2Unit)
-                prefs.cachedSensor3Val = formatSensorVal(widgetStates.s3, prefs.sensor3Unit)
-                prefs.cachedButton1On = activeStates.contains(widgetStates.b1.lowercase())
-                prefs.cachedButton2On = activeStates.contains(widgetStates.b2.lowercase())
-                prefs.cachedButton3On = activeStates.contains(widgetStates.b3.lowercase())
-                prefs.cachedButton4On = activeStates.contains(widgetStates.b4.lowercase())
-            }
+        // 2a. Execute service toggle
+        api.callEntityService(entityId, "toggle")
+        
+        // 2b. Execute full "Salva e Verifica" verification & sync pipeline
+        delay(200)
+        api.testConnectionDetailed() // Wakes up socket / VPN / portforward route
+        
+        val widgetStates = api.fetchWidgetStates()
+        val activeStates = listOf("on", "active", "playing", "true")
+        if (widgetStates.s1 != "---") {
+            prefs.cachedSensor1Val = formatSensorVal(widgetStates.s1, prefs.sensor1Unit)
+            prefs.cachedSensor2Val = formatSensorVal(widgetStates.s2, prefs.sensor2Unit)
+            prefs.cachedSensor3Val = formatSensorVal(widgetStates.s3, prefs.sensor3Unit)
+            prefs.cachedButton1On = activeStates.contains(widgetStates.b1.lowercase())
+            prefs.cachedButton2On = activeStates.contains(widgetStates.b2.lowercase())
+            prefs.cachedButton3On = activeStates.contains(widgetStates.b3.lowercase())
+            prefs.cachedButton4On = activeStates.contains(widgetStates.b4.lowercase())
+        }
+
+        val freshCam = api.fetchCameraSnapshot(prefs.cameraEntity)
+        if (freshCam != null) {
+            HaCompositeWidget.saveCachedCameraBitmap(context, freshCam)
         }
     }
 
-    // 4. Update widget UI with confirmed states
+    // 3. Force UI refresh with verified states
     HaCompositeWidget.resetLastFetchTimestamp()
     HaCompositeWidget().update(context, glanceId)
+    HaCompositeWidget().updateAll(context)
 }
 
 class RefreshWidgetAction : ActionCallback {
     override suspend fun onAction(context: Context, glanceId: GlanceId, parameters: ActionParameters) {
         val prefs = HaPreferences(context)
         val api = HomeAssistantApi(prefs)
+        
+        // Full "Salva e Verifica" pipeline on Reload (🔄) button
+        api.testConnectionDetailed() // Wakes up socket / VPN / portforward route
         
         val widgetStates = api.fetchWidgetStates()
         val activeStates = listOf("on", "active", "playing", "true")
@@ -103,6 +115,7 @@ class RefreshWidgetAction : ActionCallback {
 
         HaCompositeWidget.resetLastFetchTimestamp()
         HaCompositeWidget().update(context, glanceId)
+        HaCompositeWidget().updateAll(context)
     }
 }
 
