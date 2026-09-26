@@ -1,5 +1,6 @@
 package com.example.myapplication.widget
 
+import android.appwidget.AppWidgetManager
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
@@ -17,6 +18,7 @@ import androidx.glance.ImageProvider
 import androidx.glance.LocalSize
 import androidx.glance.action.Action
 import androidx.glance.appwidget.GlanceAppWidget
+import androidx.glance.appwidget.GlanceAppWidgetManager
 import androidx.glance.appwidget.SizeMode
 import androidx.glance.appwidget.action.actionRunCallback
 import androidx.glance.appwidget.cornerRadius
@@ -54,6 +56,34 @@ class HaCompositeWidget : GlanceAppWidget() {
     override val sizeMode: SizeMode = SizeMode.Exact
 
     override suspend fun provideGlance(context: Context, id: GlanceId) {
+        var isCoverScreen = false
+        try {
+            val manager = GlanceAppWidgetManager(context)
+            val appWidgetId = manager.getAppWidgetId(id)
+            val appWidgetManager = AppWidgetManager.getInstance(context)
+            val options = appWidgetManager.getAppWidgetOptions(appWidgetId)
+            val minWidth = options?.getInt(AppWidgetManager.OPTION_APPWIDGET_MIN_WIDTH, 250) ?: 250
+
+            if (minWidth < 180) {
+                isCoverScreen = true
+            }
+        } catch (_: Exception) {}
+
+        if (isCoverScreen) {
+            provideContent {
+                Box(
+                    modifier = GlanceModifier.fillMaxSize().background(Color(0xFF1E1E2C)).padding(8.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = "Usa lo schermo principale",
+                        style = TextStyle(color = ColorProvider(day = Color.White, night = Color.White), fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                    )
+                }
+            }
+            return
+        }
+
         val prefs = HaPreferences(context)
         val api = HomeAssistantApi(prefs)
 
