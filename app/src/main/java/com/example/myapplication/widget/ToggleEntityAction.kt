@@ -49,7 +49,12 @@ class RefreshWidgetAction : ActionCallback {
             prefs.cachedButton4On = activeStates.contains(widgetStates.b4.lowercase())
         }
         
-        api.fetchCameraSnapshot(prefs.cameraEntity)
+        val freshCam = api.fetchCameraSnapshot(prefs.cameraEntity)
+        if (freshCam != null) {
+            HaCompositeWidget.saveCachedCameraBitmap(context, freshCam)
+        }
+
+        HaCompositeWidget.resetLastFetchTimestamp()
         HaCompositeWidget().updateAll(context)
     }
 

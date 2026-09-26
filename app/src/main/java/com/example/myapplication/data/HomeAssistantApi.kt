@@ -214,42 +214,50 @@ class HomeAssistantApi(private val prefs: HaPreferences) {
     }
 
     suspend fun fetchCameraSnapshot(rawCameraEntityId: String): Bitmap? = withContext(Dispatchers.IO) {
-        val start = System.currentTimeMillis()
         val cameraEntityId = formatEntity(rawCameraEntityId, "camera")
         if (cameraEntityId.isBlank()) return@withContext null
 
-        try {
-            val reqBuilder = buildRequest("/api/camera_proxy/$cameraEntityId") ?: return@withContext null
-            cameraClient.newCall(reqBuilder.get().build()).execute().use { response ->
-                val duration = System.currentTimeMillis() - start
-                if (!response.isSuccessful) {
-                    Log.w("ApiPerf", "fetchCameraSnapshot $cameraEntityId failed: HTTP ${response.code} in ${duration}ms")
-                    return@withContext null
-                }
-                val bytes = response.body?.bytes() ?: return@withContext null
-                if (bytes.isEmpty()) {
-                    Log.w("ApiPerf", "fetchCameraSnapshot $cameraEntityId empty bytes in ${duration}ms")
-                    return@withContext null
-                }
-                val rawBitmap = BitmapFactory.decodeByteArray(bytes, 0, bytes.size) ?: return@withContext null
-                Log.d("ApiPerf", "fetchCameraSnapshot $cameraEntityId succeeded in ${duration}ms (${bytes.size} bytes)")
+        val maxAttempts = 2
+        for (attempt in 0 until maxAttempts) {
+            val start = System.currentTimeMillis()
+            try {
+                val reqBuilder = buildRequest("/api/camera_proxy/$cameraEntityId") ?: return@withContext null
+                val bitmap = client.newCall(reqBuilder.get().build()).execute().use { response ->
+                    val duration = System.currentTimeMillis() - start
+                    if (!response.isSuccessful) {
+                        Log.w("ApiPerf", "fetchCameraSnapshot $cameraEntityId failed: HTTP ${response.code} in ${duration}ms")
+                        null
+                    } else {
+                        val bytes = response.body?.bytes() ?: return@use null
+                        if (bytes.isEmpty()) {
+                            Log.w("ApiPerf", "fetchCameraSnapshot $cameraEntityId empty bytes in ${duration}ms")
+                            return@use null
+                        }
+                        val rawBitmap = BitmapFactory.decodeByteArray(bytes, 0, bytes.size) ?: return@use null
+                        Log.d("ApiPerf", "fetchCameraSnapshot $cameraEntityId succeeded in ${duration}ms (${bytes.size} bytes)")
 
-                val maxWidth = 400
-                val maxHeight = 250
-                if (rawBitmap.width > maxWidth || rawBitmap.height > maxHeight) {
-                    val scale = minOf(maxWidth.toFloat() / rawBitmap.width, maxHeight.toFloat() / rawBitmap.height)
-                    val scaledW = (rawBitmap.width * scale).toInt().coerceAtLeast(1)
-                    val scaledH = (rawBitmap.height * scale).toInt().coerceAtLeast(1)
-                    Bitmap.createScaledBitmap(rawBitmap, scaledW, scaledH, true)
-                } else {
-                    rawBitmap
+                        val maxWidth = 400
+                        val maxHeight = 250
+                        if (rawBitmap.width > maxWidth || rawBitmap.height > maxHeight) {
+                            val scale = minOf(maxWidth.toFloat() / rawBitmap.width, maxHeight.toFloat() / rawBitmap.height)
+                            val scaledW = (rawBitmap.width * scale).toInt().coerceAtLeast(1)
+                            val scaledH = (rawBitmap.height * scale).toInt().coerceAtLeast(1)
+                            Bitmap.createScaledBitmap(rawBitmap, scaledW, scaledH, true)
+                        } else {
+                            rawBitmap
+                        }
+                    }
                 }
+                if (bitmap != null) return@withContext bitmap
+            } catch (e: Exception) {
+                val duration = System.currentTimeMillis() - start
+                Log.w("ApiPerf", "fetchCameraSnapshot $cameraEntityId attempt ${attempt + 1} failed (${e.javaClass.simpleName}) after ${duration}ms")
             }
-        } catch (e: Exception) {
-            val duration = System.currentTimeMillis() - start
-            Log.w("ApiPerf", "fetchCameraSnapshot $cameraEntityId skipped/unavailable (${e.javaClass.simpleName}) after ${duration}ms")
-            null
+            if (attempt < maxAttempts - 1) {
+                try { Thread.sleep(300) } catch (_: InterruptedException) {}
+            }
         }
+        null
     }
 
     suspend fun testConnectionDetailed(): String = withContext(Dispatchers.IO) {

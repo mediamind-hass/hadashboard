@@ -2,7 +2,6 @@ package com.example.myapplication.widget
 
 import android.appwidget.AppWidgetManager
 import android.content.Context
-import android.content.Intent
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import androidx.compose.runtime.Composable
@@ -16,13 +15,12 @@ import androidx.glance.GlanceId
 import androidx.glance.GlanceModifier
 import androidx.glance.Image
 import androidx.glance.ImageProvider
-import androidx.glance.LocalContext
 import androidx.glance.LocalSize
 import androidx.glance.action.Action
-import androidx.glance.appwidget.action.actionRunCallback
 import androidx.glance.appwidget.GlanceAppWidget
 import androidx.glance.appwidget.GlanceAppWidgetManager
 import androidx.glance.appwidget.SizeMode
+import androidx.glance.appwidget.action.actionRunCallback
 import androidx.glance.appwidget.cornerRadius
 import androidx.glance.appwidget.provideContent
 import androidx.glance.background
@@ -44,7 +42,6 @@ import androidx.glance.text.Text
 import androidx.glance.text.TextStyle
 import com.example.myapplication.data.HaPreferences
 import com.example.myapplication.data.HomeAssistantApi
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.withTimeoutOrNull
 import java.io.File
 import java.io.FileOutputStream
@@ -53,6 +50,33 @@ class HaCompositeWidget : GlanceAppWidget() {
 
     companion object {
         private var lastFetchTimestamp = 0L
+
+        fun resetLastFetchTimestamp() {
+            lastFetchTimestamp = 0L
+        }
+
+        fun loadCachedCameraBitmap(context: Context): Bitmap? {
+            return try {
+                val file = File(context.cacheDir, "camera_cache.jpg")
+                if (file.exists()) {
+                    BitmapFactory.decodeFile(file.absolutePath)
+                } else {
+                    null
+                }
+            } catch (_: Exception) {
+                null
+            }
+        }
+
+        fun saveCachedCameraBitmap(context: Context, bitmap: Bitmap) {
+            try {
+                val file = File(context.cacheDir, "camera_cache.jpg")
+                FileOutputStream(file).use { out ->
+                    bitmap.compress(Bitmap.CompressFormat.JPEG, 90, out)
+                }
+            } catch (_: Exception) {
+            }
+        }
     }
 
     override val sizeMode: SizeMode = SizeMode.Exact
@@ -427,28 +451,5 @@ class HaCompositeWidget : GlanceAppWidget() {
                 fontWeight = FontWeight.Bold
             )
         )
-    }
-
-    private fun loadCachedCameraBitmap(context: Context): Bitmap? {
-        return try {
-            val file = File(context.cacheDir, "camera_cache.jpg")
-            if (file.exists()) {
-                BitmapFactory.decodeFile(file.absolutePath)
-            } else {
-                null
-            }
-        } catch (_: Exception) {
-            null
-        }
-    }
-
-    private fun saveCachedCameraBitmap(context: Context, bitmap: Bitmap) {
-        try {
-            val file = File(context.cacheDir, "camera_cache.jpg")
-            FileOutputStream(file).use { out ->
-                bitmap.compress(Bitmap.CompressFormat.JPEG, 90, out)
-            }
-        } catch (_: Exception) {
-        }
     }
 }
