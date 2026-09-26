@@ -9,6 +9,7 @@ import com.example.myapplication.data.HaPreferences
 import com.example.myapplication.data.HomeAssistantApi
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.util.concurrent.atomic.AtomicBoolean
 
@@ -40,6 +41,7 @@ class HaActionReceiver : BroadcastReceiver() {
                         }
                         if (entityId.isNotBlank()) {
                             api.callEntityService(entityId, "toggle")
+                            delay(500) // Give Home Assistant & smart switch time to execute before fetching updated state
                         }
                     }
                     ACTION_REFRESH -> {
