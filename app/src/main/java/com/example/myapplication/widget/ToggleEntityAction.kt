@@ -69,11 +69,14 @@ private suspend fun handleButtonToggle(context: Context, glanceId: GlanceId, but
 
     updateAppWidgetState(context, glanceId) { state ->
         state.toMutablePreferences().apply {
-            this[HaCompositeWidget.UPDATE_TIME_KEY] = System.currentTimeMillis()
+            this[HaCompositeWidget.UPDATE_TIME_KEY] = System.nanoTime()
         }
     }
     HaCompositeWidget().update(context, glanceId)
     Log.d("ApiPerf", "Passo 1: Set state to LOADING (RED) and triggered update(glanceId)")
+
+    // Pausa di 350ms garantita affinché il frame ROSSO rimanga visibile all'occhio umano
+    delay(350)
 
     // =========================================================================
     // PASSO 2: Esecuzione del comando HTTP verso Home Assistant
@@ -103,7 +106,7 @@ private suspend fun handleButtonToggle(context: Context, glanceId: GlanceId, but
 
     updateAppWidgetState(context, glanceId) { state ->
         state.toMutablePreferences().apply {
-            this[HaCompositeWidget.UPDATE_TIME_KEY] = System.currentTimeMillis()
+            this[HaCompositeWidget.UPDATE_TIME_KEY] = System.nanoTime()
         }
     }
     HaCompositeWidget().update(context, glanceId)
@@ -147,7 +150,7 @@ private suspend fun handleButtonToggle(context: Context, glanceId: GlanceId, but
 
         updateAppWidgetState(context, glanceId) { state ->
             state.toMutablePreferences().apply {
-                this[HaCompositeWidget.UPDATE_TIME_KEY] = System.currentTimeMillis()
+                this[HaCompositeWidget.UPDATE_TIME_KEY] = System.nanoTime()
             }
         }
         HaCompositeWidget().update(context, glanceId)
@@ -183,7 +186,7 @@ class RefreshWidgetAction : ActionCallback {
 
         updateAppWidgetState(context, glanceId) { state ->
             state.toMutablePreferences().apply {
-                this[HaCompositeWidget.UPDATE_TIME_KEY] = System.currentTimeMillis()
+                this[HaCompositeWidget.UPDATE_TIME_KEY] = System.nanoTime()
             }
         }
         HaCompositeWidget().update(context, glanceId)
