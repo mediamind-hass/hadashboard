@@ -57,42 +57,13 @@ private suspend fun handleButtonToggle(context: Context, glanceId: GlanceId, but
     val targetState = if (previousState == "on") "off" else "on"
     Log.d("ApiPerf", "Previous state: $previousState -> Target state: $targetState")
 
-    // =========================================================================
-    // PASSO 1: Riscontro visivo immediato a 0 ms (Pulsante ROSSO "loading")
-    // =========================================================================
-    when (buttonIndex) {
-        1 -> prefs.cachedButton1State = "loading"
-        2 -> prefs.cachedButton2State = "loading"
-        3 -> prefs.cachedButton3State = "loading"
-        4 -> prefs.cachedButton4State = "loading"
-    }
-
-    updateAppWidgetState(context, glanceId) { state ->
-        state.toMutablePreferences().apply {
-            when (buttonIndex) {
-                1 -> this[HaCompositeWidget.B1_STATE_KEY] = "loading"
-                2 -> this[HaCompositeWidget.B2_STATE_KEY] = "loading"
-                3 -> this[HaCompositeWidget.B3_STATE_KEY] = "loading"
-                4 -> this[HaCompositeWidget.B4_STATE_KEY] = "loading"
-            }
-        }
-    }
-    HaCompositeWidget().update(context, glanceId)
-    Log.d("ApiPerf", "Passo 1: Set state to LOADING (RED) and triggered update(glanceId)")
-
-    // Pausa di 350ms garantita affinché il frame ROSSO rimanga visibile a schermo
-    delay(350)
-
-    // =========================================================================
-    // PASSO 2: Esecuzione del comando HTTP verso Home Assistant
-    // =========================================================================
     val api = HomeAssistantApi(prefs)
-    val success = api.callEntityService(entityId, "toggle")
-    Log.d("ApiPerf", "Passo 2: callEntityService success=$success")
 
-    // =========================================================================
-    // PASSO 3: Applicazione immediata dello stato Invertito (BLU se "on", GRIGIO se "off")
-    // =========================================================================
+    // 1. Perform network service call
+    val success = api.callEntityService(entityId, "toggle")
+    Log.d("ApiPerf", "callEntityService success=$success")
+
+    // 2. Optimistic target state in cache
     val newState = if (success) targetState else previousState
     when (buttonIndex) {
         1 -> prefs.cachedButton1State = newState
@@ -101,28 +72,12 @@ private suspend fun handleButtonToggle(context: Context, glanceId: GlanceId, but
         4 -> prefs.cachedButton4State = newState
     }
 
-    updateAppWidgetState(context, glanceId) { state ->
-        state.toMutablePreferences().apply {
-            when (buttonIndex) {
-                1 -> this[HaCompositeWidget.B1_STATE_KEY] = newState
-                2 -> this[HaCompositeWidget.B2_STATE_KEY] = newState
-                3 -> this[HaCompositeWidget.B3_STATE_KEY] = newState
-                4 -> this[HaCompositeWidget.B4_STATE_KEY] = newState
-            }
-        }
-    }
-    HaCompositeWidget().update(context, glanceId)
-    Log.d("ApiPerf", "Passo 3: Set state to $newState and triggered update(glanceId)")
-
-    // =========================================================================
-    // PASSO 4: Pausa di assestamento hardware (1000ms) e verifica finale stato HA
-    // =========================================================================
+    // 3. Settle delay and true state verification
     if (success) {
-        delay(1000)
+        delay(300)
         val activeStates = listOf("on", "active", "playing", "true")
         val widgetStates = api.fetchWidgetStates()
-        Log.d("ApiPerf", "Passo 4: fetchWidgetStates returned b1=${widgetStates.b1}, b2=${widgetStates.b2}, b3=${widgetStates.b3}, b4=${widgetStates.b4}")
-
+        
         if (widgetStates.s1 != "---") {
             val s1Val = formatSensorVal(widgetStates.s1, prefs.sensor1Unit)
             val s2Val = formatSensorVal(widgetStates.s2, prefs.sensor2Unit)
@@ -142,34 +97,29 @@ private suspend fun handleButtonToggle(context: Context, glanceId: GlanceId, but
             prefs.cachedButton2State = confirmedB2
             prefs.cachedButton3State = confirmedB3
             prefs.cachedButton4State = confirmedB4
-
-            updateAppWidgetState(context, glanceId) { state ->
-                state.toMutablePreferences().apply {
-                    this[HaCompositeWidget.S1_VAL_KEY] = s1Val
-                    this[HaCompositeWidget.S2_VAL_KEY] = s2Val
-                    this[HaCompositeWidget.S3_VAL_KEY] = s3Val
-                    this[HaCompositeWidget.B1_STATE_KEY] = confirmedB1
-                    this[HaCompositeWidget.B2_STATE_KEY] = confirmedB2
-                    this[HaCompositeWidget.B3_STATE_KEY] = confirmedB3
-                    this[HaCompositeWidget.B4_STATE_KEY] = confirmedB4
-                }
-            }
         }
 
         val freshCam = api.fetchCameraSnapshot(prefs.cameraEntity)
         if (freshCam != null) {
             HaCompositeWidget.saveCachedCameraBitmap(context, freshCam)
-            updateAppWidgetState(context, glanceId) { state ->
-                state.toMutablePreferences().apply {
-                    this[HaCompositeWidget.CAM_UPDATE_KEY] = System.currentTimeMillis()
-                }
-            }
-            Log.d("ApiPerf", "Passo 4: freshCam saved")
         }
-
-        HaCompositeWidget().update(context, glanceId)
-        Log.d("ApiPerf", "Passo 4: Final update(glanceId) complete")
     }
+
+    // 4. Single clean Glance DataStore update & UI re-composition (EXACTLY like RefreshWidgetAction)
+    updateAppWidgetState(context, glanceId) { state ->
+        state.toMutablePreferences().apply {
+            this[HaCompositeWidget.B1_STATE_KEY] = prefs.cachedButton1State
+            this[HaCompositeWidget.B2_STATE_KEY] = prefs.cachedButton2State
+            this[HaCompositeWidget.B3_STATE_KEY] = prefs.cachedButton3State
+            this[HaCompositeWidget.B4_STATE_KEY] = prefs.cachedButton4State
+            this[HaCompositeWidget.S1_VAL_KEY] = prefs.cachedSensor1Val
+            this[HaCompositeWidget.S2_VAL_KEY] = prefs.cachedSensor2Val
+            this[HaCompositeWidget.S3_VAL_KEY] = prefs.cachedSensor3Val
+            this[HaCompositeWidget.CAM_UPDATE_KEY] = System.currentTimeMillis()
+        }
+    }
+    HaCompositeWidget().update(context, glanceId)
+    Log.d("ApiPerf", "handleButtonToggle complete for Button $buttonIndex")
 }
 
 class RefreshWidgetAction : ActionCallback {
