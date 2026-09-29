@@ -43,6 +43,16 @@ private suspend fun handleButtonToggle(context: Context, glanceId: GlanceId, but
         else -> ""
     }
 
+    // Determine current state before toggle to calculate intended target state
+    val previousState = when (buttonIndex) {
+        1 -> prefs.cachedButton1State
+        2 -> prefs.cachedButton2State
+        3 -> prefs.cachedButton3State
+        4 -> prefs.cachedButton4State
+        else -> "off"
+    }
+    val targetState = if (previousState == "on") "off" else "on"
+
     // 1. Instant visual feedback upon tap: highlight pressed button in RED ("loading" state)
     when (buttonIndex) {
         1 -> prefs.cachedButton1State = "loading"
@@ -64,29 +74,53 @@ private suspend fun handleButtonToggle(context: Context, glanceId: GlanceId, but
         val api = HomeAssistantApi(prefs)
         
         // 2a. Execute service toggle command
-        api.callEntityService(entityId, "toggle")
+        val success = api.callEntityService(entityId, "toggle")
         
-        // 2b. Execute full "Salva e Verifica" verification & sync pipeline
-        delay(200)
-        api.testConnectionDetailed() // Wakes up socket / VPN / portforward route
-        
-        val widgetStates = api.fetchWidgetStates()
-        val activeStates = listOf("on", "active", "playing", "true")
-        if (widgetStates.s1 != "---") {
-            prefs.cachedSensor1Val = formatSensorVal(widgetStates.s1, prefs.sensor1Unit)
-            prefs.cachedSensor2Val = formatSensorVal(widgetStates.s2, prefs.sensor2Unit)
-            prefs.cachedSensor3Val = formatSensorVal(widgetStates.s3, prefs.sensor3Unit)
+        if (success) {
+            // Apply intended target state immediately (BLUE if ON, GREY if OFF)
+            when (buttonIndex) {
+                1 -> prefs.cachedButton1State = targetState
+                2 -> prefs.cachedButton2State = targetState
+                3 -> prefs.cachedButton3State = targetState
+                4 -> prefs.cachedButton4State = targetState
+            }
+            updateAppWidgetState(context, glanceId) { state ->
+                state.toMutablePreferences().apply {
+                    this[HaCompositeWidget.UPDATE_TIME_KEY] = System.currentTimeMillis()
+                }
+            }
+            HaCompositeWidget().update(context, glanceId)
 
-            // Update confirmed button states: "on" -> BLUE, "off" -> GREY
-            prefs.cachedButton1State = if (activeStates.contains(widgetStates.b1.lowercase())) "on" else "off"
-            prefs.cachedButton2State = if (activeStates.contains(widgetStates.b2.lowercase())) "on" else "off"
-            prefs.cachedButton3State = if (activeStates.contains(widgetStates.b3.lowercase())) "on" else "off"
-            prefs.cachedButton4State = if (activeStates.contains(widgetStates.b4.lowercase())) "on" else "off"
-        }
+            // 2b. Wait 800ms for HA integration database state to settle, then verify with HA
+            delay(800)
+            api.testConnectionDetailed() // Wakes up socket / VPN / portforward route
+            
+            val widgetStates = api.fetchWidgetStates()
+            val activeStates = listOf("on", "active", "playing", "true")
+            if (widgetStates.s1 != "---") {
+                prefs.cachedSensor1Val = formatSensorVal(widgetStates.s1, prefs.sensor1Unit)
+                prefs.cachedSensor2Val = formatSensorVal(widgetStates.s2, prefs.sensor2Unit)
+                prefs.cachedSensor3Val = formatSensorVal(widgetStates.s3, prefs.sensor3Unit)
 
-        val freshCam = api.fetchCameraSnapshot(prefs.cameraEntity)
-        if (freshCam != null) {
-            HaCompositeWidget.saveCachedCameraBitmap(context, freshCam)
+                // Confirm verified button states: "on" -> BLUE, "off" -> GREY
+                prefs.cachedButton1State = if (activeStates.contains(widgetStates.b1.lowercase())) "on" else "off"
+                prefs.cachedButton2State = if (activeStates.contains(widgetStates.b2.lowercase())) "on" else "off"
+                prefs.cachedButton3State = if (activeStates.contains(widgetStates.b3.lowercase())) "on" else "off"
+                prefs.cachedButton4State = if (activeStates.contains(widgetStates.b4.lowercase())) "on" else "off"
+            }
+
+            val freshCam = api.fetchCameraSnapshot(prefs.cameraEntity)
+            if (freshCam != null) {
+                HaCompositeWidget.saveCachedCameraBitmap(context, freshCam)
+            }
+        } else {
+            // Service call failed -> Revert to previous state
+            when (buttonIndex) {
+                1 -> prefs.cachedButton1State = previousState
+                2 -> prefs.cachedButton2State = previousState
+                3 -> prefs.cachedButton3State = previousState
+                4 -> prefs.cachedButton4State = previousState
+            }
         }
     } else {
         // Reset to off/inactive if entityId is blank
@@ -98,7 +132,7 @@ private suspend fun handleButtonToggle(context: Context, glanceId: GlanceId, but
         }
     }
 
-    // 3. Final verified update: Renders verified BLUE (if ON) or GREY (if OFF)
+    // 3. Final confirmed update
     updateAppWidgetState(context, glanceId) { state ->
         state.toMutablePreferences().apply {
             this[HaCompositeWidget.UPDATE_TIME_KEY] = System.currentTimeMillis()
