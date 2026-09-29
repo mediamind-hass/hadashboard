@@ -4,6 +4,7 @@ import android.appwidget.AppWidgetManager
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import android.util.Log
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
@@ -124,6 +125,8 @@ class HaCompositeWidget : GlanceAppWidget() {
             val b2State = prefs.cachedButton2State
             val b3State = prefs.cachedButton3State
             val b4State = prefs.cachedButton4State
+
+            Log.d("ApiPerf", "provideGlance rendered: b1State=$b1State, b2State=$b2State, b3State=$b3State, b4State=$b4State")
 
             WidgetContent(
                 isConfigured = prefs.isConfigured,

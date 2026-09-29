@@ -1,6 +1,7 @@
 package com.example.myapplication.widget
 
 import android.content.Context
+import android.util.Log
 import androidx.glance.GlanceId
 import androidx.glance.action.ActionParameters
 import androidx.glance.appwidget.action.ActionCallback
@@ -43,9 +44,9 @@ private suspend fun handleButtonToggle(context: Context, glanceId: GlanceId, but
         else -> ""
     }
 
+    Log.d("ApiPerf", ">>> TAP Action on Button $buttonIndex ($entityId)")
     if (entityId.isBlank()) return
 
-    // Read current state before tap to calculate intended target state
     val previousState = when (buttonIndex) {
         1 -> prefs.cachedButton1State
         2 -> prefs.cachedButton2State
@@ -54,6 +55,7 @@ private suspend fun handleButtonToggle(context: Context, glanceId: GlanceId, but
         else -> "off"
     }
     val targetState = if (previousState == "on") "off" else "on"
+    Log.d("ApiPerf", "Previous state: $previousState -> Target state: $targetState")
 
     // =========================================================================
     // PASSO 1: Riscontro visivo immediato a 0 ms (Pulsante ROSSO "loading")
@@ -71,12 +73,14 @@ private suspend fun handleButtonToggle(context: Context, glanceId: GlanceId, but
         }
     }
     HaCompositeWidget().update(context, glanceId)
+    Log.d("ApiPerf", "Passo 1: Set state to LOADING (RED) and triggered update(glanceId)")
 
     // =========================================================================
     // PASSO 2: Esecuzione del comando HTTP verso Home Assistant
     // =========================================================================
     val api = HomeAssistantApi(prefs)
     val success = api.callEntityService(entityId, "toggle")
+    Log.d("ApiPerf", "Passo 2: callEntityService success=$success")
 
     // =========================================================================
     // PASSO 3: Applicazione immediata dello stato Invertito (BLU se "on", GRIGIO se "off")
@@ -89,7 +93,6 @@ private suspend fun handleButtonToggle(context: Context, glanceId: GlanceId, but
             4 -> prefs.cachedButton4State = targetState
         }
     } else {
-        // Se la chiamata fallisce, ripristina lo stato precedente
         when (buttonIndex) {
             1 -> prefs.cachedButton1State = previousState
             2 -> prefs.cachedButton2State = previousState
@@ -104,21 +107,22 @@ private suspend fun handleButtonToggle(context: Context, glanceId: GlanceId, but
         }
     }
     HaCompositeWidget().update(context, glanceId)
+    Log.d("ApiPerf", "Passo 3: Set state to $targetState and triggered update(glanceId)")
 
     // =========================================================================
     // PASSO 4: Pausa di assestamento hardware (1000ms) e verifica finale stato HA
     // =========================================================================
     if (success) {
-        delay(1000) // Attesa assestamento relè/database Home Assistant
+        delay(1000)
         val activeStates = listOf("on", "active", "playing", "true")
         val widgetStates = api.fetchWidgetStates()
-        
+        Log.d("ApiPerf", "Passo 4: fetchWidgetStates returned b1=${widgetStates.b1}, b2=${widgetStates.b2}, b3=${widgetStates.b3}, b4=${widgetStates.b4}")
+
         if (widgetStates.s1 != "---") {
             prefs.cachedSensor1Val = formatSensorVal(widgetStates.s1, prefs.sensor1Unit)
             prefs.cachedSensor2Val = formatSensorVal(widgetStates.s2, prefs.sensor2Unit)
             prefs.cachedSensor3Val = formatSensorVal(widgetStates.s3, prefs.sensor3Unit)
 
-            // Conferma finale dallo stato reale ritornato da Home Assistant
             val isButtonDomain = entityId.startsWith("button.") || entityId.startsWith("script.") || entityId.startsWith("scene.")
             if (!isButtonDomain) {
                 prefs.cachedButton1State = if (activeStates.contains(widgetStates.b1.lowercase())) "on" else "off"
@@ -126,7 +130,6 @@ private suspend fun handleButtonToggle(context: Context, glanceId: GlanceId, but
                 prefs.cachedButton3State = if (activeStates.contains(widgetStates.b3.lowercase())) "on" else "off"
                 prefs.cachedButton4State = if (activeStates.contains(widgetStates.b4.lowercase())) "on" else "off"
             } else {
-                // Per script/button/scene che non mantengono stato fisso "on", ritorna a "off" (GRIGIO) dopo l'attivazione
                 when (buttonIndex) {
                     1 -> prefs.cachedButton1State = "off"
                     2 -> prefs.cachedButton2State = "off"
@@ -139,6 +142,7 @@ private suspend fun handleButtonToggle(context: Context, glanceId: GlanceId, but
         val freshCam = api.fetchCameraSnapshot(prefs.cameraEntity)
         if (freshCam != null) {
             HaCompositeWidget.saveCachedCameraBitmap(context, freshCam)
+            Log.d("ApiPerf", "Passo 4: freshCam saved")
         }
 
         updateAppWidgetState(context, glanceId) { state ->
@@ -147,16 +151,17 @@ private suspend fun handleButtonToggle(context: Context, glanceId: GlanceId, but
             }
         }
         HaCompositeWidget().update(context, glanceId)
+        Log.d("ApiPerf", "Passo 4: Final update(glanceId) complete")
     }
 }
 
 class RefreshWidgetAction : ActionCallback {
     override suspend fun onAction(context: Context, glanceId: GlanceId, parameters: ActionParameters) {
+        Log.d("ApiPerf", ">>> TAP Action on RefreshWidgetAction (🔄)")
         val prefs = HaPreferences(context)
         val api = HomeAssistantApi(prefs)
         
-        // Full "Salva e Verifica" pipeline on Reload (🔄) button
-        api.testConnectionDetailed() // Wakes up socket / VPN / portforward route
+        api.testConnectionDetailed()
         
         val widgetStates = api.fetchWidgetStates()
         val activeStates = listOf("on", "active", "playing", "true")
@@ -165,7 +170,6 @@ class RefreshWidgetAction : ActionCallback {
             prefs.cachedSensor2Val = formatSensorVal(widgetStates.s2, prefs.sensor2Unit)
             prefs.cachedSensor3Val = formatSensorVal(widgetStates.s3, prefs.sensor3Unit)
 
-            // Update verified button states: "on" -> BLUE, "off" -> GREY
             prefs.cachedButton1State = if (activeStates.contains(widgetStates.b1.lowercase())) "on" else "off"
             prefs.cachedButton2State = if (activeStates.contains(widgetStates.b2.lowercase())) "on" else "off"
             prefs.cachedButton3State = if (activeStates.contains(widgetStates.b3.lowercase())) "on" else "off"
@@ -177,13 +181,13 @@ class RefreshWidgetAction : ActionCallback {
             HaCompositeWidget.saveCachedCameraBitmap(context, freshCam)
         }
 
-        // Single clean Glance update
         updateAppWidgetState(context, glanceId) { state ->
             state.toMutablePreferences().apply {
                 this[HaCompositeWidget.UPDATE_TIME_KEY] = System.currentTimeMillis()
             }
         }
         HaCompositeWidget().update(context, glanceId)
+        Log.d("ApiPerf", "RefreshWidgetAction complete")
     }
 }
 
