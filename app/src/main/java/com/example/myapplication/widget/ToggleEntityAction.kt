@@ -69,13 +69,18 @@ private suspend fun handleButtonToggle(context: Context, glanceId: GlanceId, but
 
     updateAppWidgetState(context, glanceId) { state ->
         state.toMutablePreferences().apply {
-            this[HaCompositeWidget.UPDATE_TIME_KEY] = System.nanoTime()
+            when (buttonIndex) {
+                1 -> this[HaCompositeWidget.B1_STATE_KEY] = "loading"
+                2 -> this[HaCompositeWidget.B2_STATE_KEY] = "loading"
+                3 -> this[HaCompositeWidget.B3_STATE_KEY] = "loading"
+                4 -> this[HaCompositeWidget.B4_STATE_KEY] = "loading"
+            }
         }
     }
     HaCompositeWidget().update(context, glanceId)
     Log.d("ApiPerf", "Passo 1: Set state to LOADING (RED) and triggered update(glanceId)")
 
-    // Pausa di 350ms garantita affinché il frame ROSSO rimanga visibile all'occhio umano
+    // Pausa di 350ms garantita affinché il frame ROSSO rimanga visibile a schermo
     delay(350)
 
     // =========================================================================
@@ -88,29 +93,26 @@ private suspend fun handleButtonToggle(context: Context, glanceId: GlanceId, but
     // =========================================================================
     // PASSO 3: Applicazione immediata dello stato Invertito (BLU se "on", GRIGIO se "off")
     // =========================================================================
-    if (success) {
-        when (buttonIndex) {
-            1 -> prefs.cachedButton1State = targetState
-            2 -> prefs.cachedButton2State = targetState
-            3 -> prefs.cachedButton3State = targetState
-            4 -> prefs.cachedButton4State = targetState
-        }
-    } else {
-        when (buttonIndex) {
-            1 -> prefs.cachedButton1State = previousState
-            2 -> prefs.cachedButton2State = previousState
-            3 -> prefs.cachedButton3State = previousState
-            4 -> prefs.cachedButton4State = previousState
-        }
+    val newState = if (success) targetState else previousState
+    when (buttonIndex) {
+        1 -> prefs.cachedButton1State = newState
+        2 -> prefs.cachedButton2State = newState
+        3 -> prefs.cachedButton3State = newState
+        4 -> prefs.cachedButton4State = newState
     }
 
     updateAppWidgetState(context, glanceId) { state ->
         state.toMutablePreferences().apply {
-            this[HaCompositeWidget.UPDATE_TIME_KEY] = System.nanoTime()
+            when (buttonIndex) {
+                1 -> this[HaCompositeWidget.B1_STATE_KEY] = newState
+                2 -> this[HaCompositeWidget.B2_STATE_KEY] = newState
+                3 -> this[HaCompositeWidget.B3_STATE_KEY] = newState
+                4 -> this[HaCompositeWidget.B4_STATE_KEY] = newState
+            }
         }
     }
     HaCompositeWidget().update(context, glanceId)
-    Log.d("ApiPerf", "Passo 3: Set state to $targetState and triggered update(glanceId)")
+    Log.d("ApiPerf", "Passo 3: Set state to $newState and triggered update(glanceId)")
 
     // =========================================================================
     // PASSO 4: Pausa di assestamento hardware (1000ms) e verifica finale stato HA
@@ -122,22 +124,34 @@ private suspend fun handleButtonToggle(context: Context, glanceId: GlanceId, but
         Log.d("ApiPerf", "Passo 4: fetchWidgetStates returned b1=${widgetStates.b1}, b2=${widgetStates.b2}, b3=${widgetStates.b3}, b4=${widgetStates.b4}")
 
         if (widgetStates.s1 != "---") {
-            prefs.cachedSensor1Val = formatSensorVal(widgetStates.s1, prefs.sensor1Unit)
-            prefs.cachedSensor2Val = formatSensorVal(widgetStates.s2, prefs.sensor2Unit)
-            prefs.cachedSensor3Val = formatSensorVal(widgetStates.s3, prefs.sensor3Unit)
+            val s1Val = formatSensorVal(widgetStates.s1, prefs.sensor1Unit)
+            val s2Val = formatSensorVal(widgetStates.s2, prefs.sensor2Unit)
+            val s3Val = formatSensorVal(widgetStates.s3, prefs.sensor3Unit)
+
+            prefs.cachedSensor1Val = s1Val
+            prefs.cachedSensor2Val = s2Val
+            prefs.cachedSensor3Val = s3Val
 
             val isButtonDomain = entityId.startsWith("button.") || entityId.startsWith("script.") || entityId.startsWith("scene.")
-            if (!isButtonDomain) {
-                prefs.cachedButton1State = if (activeStates.contains(widgetStates.b1.lowercase())) "on" else "off"
-                prefs.cachedButton2State = if (activeStates.contains(widgetStates.b2.lowercase())) "on" else "off"
-                prefs.cachedButton3State = if (activeStates.contains(widgetStates.b3.lowercase())) "on" else "off"
-                prefs.cachedButton4State = if (activeStates.contains(widgetStates.b4.lowercase())) "on" else "off"
-            } else {
-                when (buttonIndex) {
-                    1 -> prefs.cachedButton1State = "off"
-                    2 -> prefs.cachedButton2State = "off"
-                    3 -> prefs.cachedButton3State = "off"
-                    4 -> prefs.cachedButton4State = "off"
+            val confirmedB1 = if (!isButtonDomain && activeStates.contains(widgetStates.b1.lowercase())) "on" else "off"
+            val confirmedB2 = if (!isButtonDomain && activeStates.contains(widgetStates.b2.lowercase())) "on" else "off"
+            val confirmedB3 = if (!isButtonDomain && activeStates.contains(widgetStates.b3.lowercase())) "on" else "off"
+            val confirmedB4 = if (!isButtonDomain && activeStates.contains(widgetStates.b4.lowercase())) "on" else "off"
+
+            prefs.cachedButton1State = confirmedB1
+            prefs.cachedButton2State = confirmedB2
+            prefs.cachedButton3State = confirmedB3
+            prefs.cachedButton4State = confirmedB4
+
+            updateAppWidgetState(context, glanceId) { state ->
+                state.toMutablePreferences().apply {
+                    this[HaCompositeWidget.S1_VAL_KEY] = s1Val
+                    this[HaCompositeWidget.S2_VAL_KEY] = s2Val
+                    this[HaCompositeWidget.S3_VAL_KEY] = s3Val
+                    this[HaCompositeWidget.B1_STATE_KEY] = confirmedB1
+                    this[HaCompositeWidget.B2_STATE_KEY] = confirmedB2
+                    this[HaCompositeWidget.B3_STATE_KEY] = confirmedB3
+                    this[HaCompositeWidget.B4_STATE_KEY] = confirmedB4
                 }
             }
         }
@@ -145,14 +159,14 @@ private suspend fun handleButtonToggle(context: Context, glanceId: GlanceId, but
         val freshCam = api.fetchCameraSnapshot(prefs.cameraEntity)
         if (freshCam != null) {
             HaCompositeWidget.saveCachedCameraBitmap(context, freshCam)
+            updateAppWidgetState(context, glanceId) { state ->
+                state.toMutablePreferences().apply {
+                    this[HaCompositeWidget.CAM_UPDATE_KEY] = System.currentTimeMillis()
+                }
+            }
             Log.d("ApiPerf", "Passo 4: freshCam saved")
         }
 
-        updateAppWidgetState(context, glanceId) { state ->
-            state.toMutablePreferences().apply {
-                this[HaCompositeWidget.UPDATE_TIME_KEY] = System.nanoTime()
-            }
-        }
         HaCompositeWidget().update(context, glanceId)
         Log.d("ApiPerf", "Passo 4: Final update(glanceId) complete")
     }
@@ -169,26 +183,47 @@ class RefreshWidgetAction : ActionCallback {
         val widgetStates = api.fetchWidgetStates()
         val activeStates = listOf("on", "active", "playing", "true")
         if (widgetStates.s1 != "---") {
-            prefs.cachedSensor1Val = formatSensorVal(widgetStates.s1, prefs.sensor1Unit)
-            prefs.cachedSensor2Val = formatSensorVal(widgetStates.s2, prefs.sensor2Unit)
-            prefs.cachedSensor3Val = formatSensorVal(widgetStates.s3, prefs.sensor3Unit)
+            val s1Val = formatSensorVal(widgetStates.s1, prefs.sensor1Unit)
+            val s2Val = formatSensorVal(widgetStates.s2, prefs.sensor2Unit)
+            val s3Val = formatSensorVal(widgetStates.s3, prefs.sensor3Unit)
 
-            prefs.cachedButton1State = if (activeStates.contains(widgetStates.b1.lowercase())) "on" else "off"
-            prefs.cachedButton2State = if (activeStates.contains(widgetStates.b2.lowercase())) "on" else "off"
-            prefs.cachedButton3State = if (activeStates.contains(widgetStates.b3.lowercase())) "on" else "off"
-            prefs.cachedButton4State = if (activeStates.contains(widgetStates.b4.lowercase())) "on" else "off"
+            val confirmedB1 = if (activeStates.contains(widgetStates.b1.lowercase())) "on" else "off"
+            val confirmedB2 = if (activeStates.contains(widgetStates.b2.lowercase())) "on" else "off"
+            val confirmedB3 = if (activeStates.contains(widgetStates.b3.lowercase())) "on" else "off"
+            val confirmedB4 = if (activeStates.contains(widgetStates.b4.lowercase())) "on" else "off"
+
+            prefs.cachedSensor1Val = s1Val
+            prefs.cachedSensor2Val = s2Val
+            prefs.cachedSensor3Val = s3Val
+
+            prefs.cachedButton1State = confirmedB1
+            prefs.cachedButton2State = confirmedB2
+            prefs.cachedButton3State = confirmedB3
+            prefs.cachedButton4State = confirmedB4
+
+            updateAppWidgetState(context, glanceId) { state ->
+                state.toMutablePreferences().apply {
+                    this[HaCompositeWidget.S1_VAL_KEY] = s1Val
+                    this[HaCompositeWidget.S2_VAL_KEY] = s2Val
+                    this[HaCompositeWidget.S3_VAL_KEY] = s3Val
+                    this[HaCompositeWidget.B1_STATE_KEY] = confirmedB1
+                    this[HaCompositeWidget.B2_STATE_KEY] = confirmedB2
+                    this[HaCompositeWidget.B3_STATE_KEY] = confirmedB3
+                    this[HaCompositeWidget.B4_STATE_KEY] = confirmedB4
+                }
+            }
         }
         
         val freshCam = api.fetchCameraSnapshot(prefs.cameraEntity)
         if (freshCam != null) {
             HaCompositeWidget.saveCachedCameraBitmap(context, freshCam)
-        }
-
-        updateAppWidgetState(context, glanceId) { state ->
-            state.toMutablePreferences().apply {
-                this[HaCompositeWidget.UPDATE_TIME_KEY] = System.nanoTime()
+            updateAppWidgetState(context, glanceId) { state ->
+                state.toMutablePreferences().apply {
+                    this[HaCompositeWidget.CAM_UPDATE_KEY] = System.currentTimeMillis()
+                }
             }
         }
+
         HaCompositeWidget().update(context, glanceId)
         Log.d("ApiPerf", "RefreshWidgetAction complete")
     }

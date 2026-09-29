@@ -12,6 +12,7 @@ import androidx.compose.ui.unit.isSpecified
 import androidx.compose.ui.unit.sp
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.longPreferencesKey
+import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.glance.Button
 import androidx.glance.ButtonDefaults
 import androidx.glance.GlanceId
@@ -51,7 +52,16 @@ import java.io.FileOutputStream
 class HaCompositeWidget : GlanceAppWidget() {
 
     companion object {
-        val UPDATE_TIME_KEY = longPreferencesKey("last_widget_update_time")
+        val B1_STATE_KEY = stringPreferencesKey("b1_state")
+        val B2_STATE_KEY = stringPreferencesKey("b2_state")
+        val B3_STATE_KEY = stringPreferencesKey("b3_state")
+        val B4_STATE_KEY = stringPreferencesKey("b4_state")
+
+        val S1_VAL_KEY = stringPreferencesKey("s1_val")
+        val S2_VAL_KEY = stringPreferencesKey("s2_val")
+        val S3_VAL_KEY = stringPreferencesKey("s3_val")
+
+        val CAM_UPDATE_KEY = longPreferencesKey("cam_update_time")
 
         fun loadCachedCameraBitmap(context: Context): Bitmap? {
             return try {
@@ -111,20 +121,20 @@ class HaCompositeWidget : GlanceAppWidget() {
         val prefs = HaPreferences(context)
 
         provideContent {
-            // Register Glance State DataStore dependency to trigger instant re-composition on state update
+            // Read Glance State DataStore keys directly to register Glance UI dependency
             val glanceState = currentState<Preferences>()
-            val _triggerStateChange = glanceState[UPDATE_TIME_KEY] ?: 0L
 
-            // Read immediately from local cache for instant zero-latency UI rendering
+            val b1State = glanceState[B1_STATE_KEY] ?: prefs.cachedButton1State
+            val b2State = glanceState[B2_STATE_KEY] ?: prefs.cachedButton2State
+            val b3State = glanceState[B3_STATE_KEY] ?: prefs.cachedButton3State
+            val b4State = glanceState[B4_STATE_KEY] ?: prefs.cachedButton4State
+
+            val s1Val = glanceState[S1_VAL_KEY] ?: prefs.cachedSensor1Val
+            val s2Val = glanceState[S2_VAL_KEY] ?: prefs.cachedSensor2Val
+            val s3Val = glanceState[S3_VAL_KEY] ?: prefs.cachedSensor3Val
+
+            val _camTrigger = glanceState[CAM_UPDATE_KEY] ?: 0L
             val cameraBitmap: Bitmap? = loadCachedCameraBitmap(context)
-            val s1Val = prefs.cachedSensor1Val
-            val s2Val = prefs.cachedSensor2Val
-            val s3Val = prefs.cachedSensor3Val
-
-            val b1State = prefs.cachedButton1State
-            val b2State = prefs.cachedButton2State
-            val b3State = prefs.cachedButton3State
-            val b4State = prefs.cachedButton4State
 
             Log.d("ApiPerf", "provideGlance rendered: b1State=$b1State, b2State=$b2State, b3State=$b3State, b4State=$b4State")
 
