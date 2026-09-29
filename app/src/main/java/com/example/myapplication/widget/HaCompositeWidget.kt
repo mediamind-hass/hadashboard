@@ -21,10 +21,12 @@ import androidx.glance.Image
 import androidx.glance.ImageProvider
 import androidx.glance.LocalSize
 import androidx.glance.action.Action
+import androidx.glance.action.ActionParameters
+import androidx.glance.action.actionParametersOf
+import androidx.glance.action.actionStartActivity
 import androidx.glance.appwidget.GlanceAppWidget
 import androidx.glance.appwidget.GlanceAppWidgetManager
 import androidx.glance.appwidget.SizeMode
-import androidx.glance.appwidget.action.actionRunCallback
 import androidx.glance.appwidget.cornerRadius
 import androidx.glance.appwidget.provideContent
 import androidx.glance.background
@@ -191,6 +193,9 @@ class HaCompositeWidget : GlanceAppWidget() {
         val activeBtnBg = Color(0xFF1E88E5)
         val inactiveBtnBg = Color(0xFF393E46)
 
+        val btnIndexKey = ActionParameters.Key<Int>(WidgetBridgeActivity.EXTRA_BUTTON_INDEX)
+        val refreshKey = ActionParameters.Key<Boolean>(WidgetBridgeActivity.EXTRA_IS_REFRESH)
+
         Column(
             modifier = GlanceModifier
                 .fillMaxSize()
@@ -252,7 +257,9 @@ class HaCompositeWidget : GlanceAppWidget() {
                     ) {
                         Button(
                             text = "🔄",
-                            onClick = actionRunCallback<RefreshWidgetAction>(),
+                            onClick = actionStartActivity<WidgetBridgeActivity>(
+                                actionParametersOf(refreshKey to true)
+                            ),
                             colors = ButtonDefaults.buttonColors(
                                 backgroundColor = ColorProvider(day = Color(0xAA000000), night = Color(0xAA000000)),
                                 contentColor = ColorProvider(day = textColor, night = textColor)
@@ -318,7 +325,9 @@ class HaCompositeWidget : GlanceAppWidget() {
                     activeBg = activeBtnBg,
                     inactiveBg = inactiveBtnBg,
                     textColor = textColor,
-                    onClickAction = actionRunCallback<Button1Action>(),
+                    onClickAction = actionStartActivity<WidgetBridgeActivity>(
+                        actionParametersOf(btnIndexKey to 1)
+                    ),
                     modifier = GlanceModifier.defaultWeight().fillMaxHeight()
                 )
                 Spacer(modifier = GlanceModifier.width(2.dp))
@@ -329,7 +338,9 @@ class HaCompositeWidget : GlanceAppWidget() {
                     activeBg = activeBtnBg,
                     inactiveBg = inactiveBtnBg,
                     textColor = textColor,
-                    onClickAction = actionRunCallback<Button2Action>(),
+                    onClickAction = actionStartActivity<WidgetBridgeActivity>(
+                        actionParametersOf(btnIndexKey to 2)
+                    ),
                     modifier = GlanceModifier.defaultWeight().fillMaxHeight()
                 )
                 Spacer(modifier = GlanceModifier.width(2.dp))
@@ -340,7 +351,9 @@ class HaCompositeWidget : GlanceAppWidget() {
                     activeBg = activeBtnBg,
                     inactiveBg = inactiveBtnBg,
                     textColor = textColor,
-                    onClickAction = actionRunCallback<Button3Action>(),
+                    onClickAction = actionStartActivity<WidgetBridgeActivity>(
+                        actionParametersOf(btnIndexKey to 3)
+                    ),
                     modifier = GlanceModifier.defaultWeight().fillMaxHeight()
                 )
                 Spacer(modifier = GlanceModifier.width(2.dp))
@@ -351,7 +364,9 @@ class HaCompositeWidget : GlanceAppWidget() {
                     activeBg = activeBtnBg,
                     inactiveBg = inactiveBtnBg,
                     textColor = textColor,
-                    onClickAction = actionRunCallback<Button4Action>(),
+                    onClickAction = actionStartActivity<WidgetBridgeActivity>(
+                        actionParametersOf(btnIndexKey to 4)
+                    ),
                     modifier = GlanceModifier.defaultWeight().fillMaxHeight()
                 )
             }
