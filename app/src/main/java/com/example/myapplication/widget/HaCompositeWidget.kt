@@ -120,10 +120,10 @@ class HaCompositeWidget : GlanceAppWidget() {
             val s2Val = prefs.cachedSensor2Val
             val s3Val = prefs.cachedSensor3Val
 
-            val b1On = prefs.cachedButton1On
-            val b2On = prefs.cachedButton2On
-            val b3On = prefs.cachedButton3On
-            val b4On = prefs.cachedButton4On
+            val b1State = prefs.cachedButton1State
+            val b2State = prefs.cachedButton2State
+            val b3State = prefs.cachedButton3State
+            val b4State = prefs.cachedButton4State
 
             WidgetContent(
                 isConfigured = prefs.isConfigured,
@@ -135,13 +135,13 @@ class HaCompositeWidget : GlanceAppWidget() {
                 s3Name = prefs.sensor3Name,
                 s3Val = s3Val,
                 b1Name = prefs.button1Name,
-                b1On = b1On,
+                b1State = b1State,
                 b2Name = prefs.button2Name,
-                b2On = b2On,
+                b2State = b2State,
                 b3Name = prefs.button3Name,
-                b3On = b3On,
+                b3State = b3State,
                 b4Name = prefs.button4Name,
-                b4On = b4On
+                b4State = b4State
             )
         }
     }
@@ -153,10 +153,10 @@ class HaCompositeWidget : GlanceAppWidget() {
         s1Name: String, s1Val: String,
         s2Name: String, s2Val: String,
         s3Name: String, s3Val: String,
-        b1Name: String, b1On: Boolean,
-        b2Name: String, b2On: Boolean,
-        b3Name: String, b3On: Boolean,
-        b4Name: String, b4On: Boolean
+        b1Name: String, b1State: String,
+        b2Name: String, b2State: String,
+        b3Name: String, b3State: String,
+        b4Name: String, b4State: String
     ) {
         val size = LocalSize.current
         val totalWidth = if (size.width.isSpecified && size.width > 0.dp) size.width else 250.dp
@@ -169,7 +169,13 @@ class HaCompositeWidget : GlanceAppWidget() {
         val accentColor = Color(0xFF00ADB5)
         val textColor = Color(0xFFEEEEEE)
         val mutedTextColor = Color(0xFFAAAAAA)
-        val activeBtnBg = Color(0xFF00ADB5)
+
+        // Distinct colors for button States:
+        // ROSSO = Attivazione in corso / Loading
+        // BLU = Stato Attivo / On (Verificato)
+        // GRIGIO = Disattivo / Off
+        val loadingBtnBg = Color(0xFFE53935)
+        val activeBtnBg = Color(0xFF1E88E5)
         val inactiveBtnBg = Color(0xFF393E46)
 
         Column(
@@ -294,7 +300,8 @@ class HaCompositeWidget : GlanceAppWidget() {
             ) {
                 ActionButton(
                     name = b1Name,
-                    isOn = b1On,
+                    state = b1State,
+                    loadingBg = loadingBtnBg,
                     activeBg = activeBtnBg,
                     inactiveBg = inactiveBtnBg,
                     textColor = textColor,
@@ -304,7 +311,8 @@ class HaCompositeWidget : GlanceAppWidget() {
                 Spacer(modifier = GlanceModifier.width(2.dp))
                 ActionButton(
                     name = b2Name,
-                    isOn = b2On,
+                    state = b2State,
+                    loadingBg = loadingBtnBg,
                     activeBg = activeBtnBg,
                     inactiveBg = inactiveBtnBg,
                     textColor = textColor,
@@ -314,7 +322,8 @@ class HaCompositeWidget : GlanceAppWidget() {
                 Spacer(modifier = GlanceModifier.width(2.dp))
                 ActionButton(
                     name = b3Name,
-                    isOn = b3On,
+                    state = b3State,
+                    loadingBg = loadingBtnBg,
                     activeBg = activeBtnBg,
                     inactiveBg = inactiveBtnBg,
                     textColor = textColor,
@@ -324,7 +333,8 @@ class HaCompositeWidget : GlanceAppWidget() {
                 Spacer(modifier = GlanceModifier.width(2.dp))
                 ActionButton(
                     name = b4Name,
-                    isOn = b4On,
+                    state = b4State,
+                    loadingBg = loadingBtnBg,
                     activeBg = activeBtnBg,
                     inactiveBg = inactiveBtnBg,
                     textColor = textColor,
@@ -375,14 +385,19 @@ class HaCompositeWidget : GlanceAppWidget() {
     @Composable
     private fun ActionButton(
         name: String,
-        isOn: Boolean,
+        state: String,
+        loadingBg: Color,
         activeBg: Color,
         inactiveBg: Color,
         textColor: Color,
         onClickAction: Action,
         modifier: GlanceModifier
     ) {
-        val bg = if (isOn) activeBg else inactiveBg
+        val bg = when (state.lowercase()) {
+            "loading", "pending" -> loadingBg // ROSSO per attivazione in corso
+            "on", "active", "true" -> activeBg // BLU per attivo verificato
+            else -> inactiveBg // GRIGIO per disattivo
+        }
         val displayText = if (name.isNotBlank()) name else "Btn"
 
         Button(

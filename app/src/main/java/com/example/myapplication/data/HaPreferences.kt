@@ -82,7 +82,7 @@ class HaPreferences(context: Context) {
 
     var button3Entity: String
         get() = prefs.getString("btn_3_entity", "switch.relay_3") ?: "switch.relay_3"
-        set(value) = prefs.edit().putString("btn_3_name", value.trim()).apply()
+        set(value) = prefs.edit().putString("btn_3_entity", value.trim()).apply()
 
     var button3Name: String
         get() = prefs.getString("btn_3_name", "Relè 3") ?: "Relè 3"
@@ -111,6 +111,35 @@ class HaPreferences(context: Context) {
     var cachedSensor3Val: String
         get() = prefs.getString("cached_s3", "---") ?: "---"
         set(value) = prefs.edit().putString("cached_s3", value).apply()
+
+    // 3-State button caching: "off" (Grey), "loading" (Red), "on" (Blue)
+    var cachedButton1State: String
+        get() = prefs.getString("cached_b1_state", if (cachedButton1On) "on" else "off") ?: "off"
+        set(value) {
+            prefs.edit().putString("cached_b1_state", value).apply()
+            prefs.edit().putBoolean("cached_b1", value == "on" || value == "loading").apply()
+        }
+
+    var cachedButton2State: String
+        get() = prefs.getString("cached_b2_state", if (cachedButton2On) "on" else "off") ?: "off"
+        set(value) {
+            prefs.edit().putString("cached_b2_state", value).apply()
+            prefs.edit().putBoolean("cached_b2", value == "on" || value == "loading").apply()
+        }
+
+    var cachedButton3State: String
+        get() = prefs.getString("cached_b3_state", if (cachedButton3On) "on" else "off") ?: "off"
+        set(value) {
+            prefs.edit().putString("cached_b3_state", value).apply()
+            prefs.edit().putBoolean("cached_b3", value == "on" || value == "loading").apply()
+        }
+
+    var cachedButton4State: String
+        get() = prefs.getString("cached_b4_state", if (cachedButton4On) "on" else "off") ?: "off"
+        set(value) {
+            prefs.edit().putString("cached_b4_state", value).apply()
+            prefs.edit().putBoolean("cached_b4", value == "on" || value == "loading").apply()
+        }
 
     var cachedButton1On: Boolean
         get() = prefs.getBoolean("cached_b1", false)
