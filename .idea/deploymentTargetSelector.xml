@@ -25,6 +25,14 @@
             </Target>
           </targets>
         </DialogSelection>
+        <DropdownSelection timestamp="2026-10-11T18:38:57.741581200Z">
+          <Target type="DEFAULT_BOOT">
+            <handle>
+              <DeviceId pluginId="Wireless" identifier="serviceName=adb-R5GL5451HLR-oikiWm" />
+            </handle>
+          </Target>
+        </DropdownSelection>
+        <DialogSelection />
       </SelectionState>
     </selectionStates>
   </component>

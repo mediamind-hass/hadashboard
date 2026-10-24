@@ -113,9 +113,15 @@ fun ConfigurationScreen(modifier: Modifier = Modifier) {
             OutlinedTextField(
                 value = serverUrl,
                 onValueChange = { serverUrl = it },
-                label = { Text("URL Server (es. http://192.168.1.100:8123)") },
+                label = { Text("URL Server (es. http://192.168.16.33:8123)") },
                 modifier = Modifier.fillMaxWidth(),
                 singleLine = true
+            )
+            Spacer(modifier = Modifier.height(4.dp))
+            Text(
+                text = "💡 Per WireGuard / LAN: Inserisci l'IP e la porta del server (es. http://192.168.16.33:8123 o l'IP WireGuard).",
+                fontSize = 11.sp,
+                color = MaterialTheme.colorScheme.outline
             )
             Spacer(modifier = Modifier.height(8.dp))
             OutlinedTextField(
@@ -126,6 +132,23 @@ fun ConfigurationScreen(modifier: Modifier = Modifier) {
                 modifier = Modifier.fillMaxWidth(),
                 singleLine = true
             )
+            Spacer(modifier = Modifier.height(10.dp))
+            val context = LocalContext.current
+            Button(
+                onClick = {
+                    try {
+                        val intent = android.content.Intent(android.provider.Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS).apply {
+                            data = android.net.Uri.parse("package:${context.packageName}")
+                        }
+                        context.startActivity(intent)
+                    } catch (e: Exception) {
+                        e.printStackTrace()
+                    }
+                },
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text("⚡ Disattiva Risparmio Energetico (Consigliato per Samsung)", fontSize = 12.sp)
+            }
         }
 
         Spacer(modifier = Modifier.height(12.dp))
@@ -213,10 +236,6 @@ fun ConfigurationScreen(modifier: Modifier = Modifier) {
             )
         }
 
-        Spacer(modifier = Modifier.height(12.dp))
-
-        // 5. SECURITY & CONFIRMATION CARD (Removed)
-
         Spacer(modifier = Modifier.height(20.dp))
 
         // ACTIONS
@@ -250,15 +269,58 @@ fun ConfigurationScreen(modifier: Modifier = Modifier) {
                     prefs.button4Entity = b4Entity
                     prefs.button4Name = b4Name
 
-                    val api = HomeAssistantApi(prefs)
-                    val resultMsg = api.testConnectionDetailed()
+                    val api = HomeAssistantApi(prefs, context)
+                    val result = api.testConnectionDetails()
                     isTesting = false
 
-                    if (resultMsg == "OK") {
-                        Toast.makeText(context, "Connessione riuscita! Impostazioni salvate.", Toast.LENGTH_LONG).show()
-                        HaCompositeWidget().updateAll(context)
-                    } else {
-                        Toast.makeText(context, "Connessione fallita: $resultMsg", Toast.LENGTH_LONG).show()
+                    when (result) {
+                        is com.example.myapplication.data.ConnectionResult.Success -> {
+                            Toast.makeText(context, "Connessione riuscita! Impostazioni salvate.", Toast.LENGTH_LONG).show()
+                            HaCompositeWidget().updateAll(context)
+                        }
+                        is com.example.myapplication.data.ConnectionResult.Timeout -> {
+                            if (result.suggestedUrl != null) {
+                                serverUrl = result.suggestedUrl
+                                prefs.serverUrl = result.suggestedUrl
+                                Toast.makeText(
+                                    context,
+                                    "Trovato Home Assistant su ${result.suggestedUrl}! URL aggiornato.",
+                                    Toast.LENGTH_LONG
+                                ).show()
+                                HaCompositeWidget().updateAll(context)
+                            } else {
+                                Toast.makeText(
+                                    context,
+                                    "Timeout di connessione a ${result.url}. Nessuna porta aperta trovata sull'host.",
+                                    Toast.LENGTH_LONG
+                                ).show()
+                            }
+                        }
+                        is com.example.myapplication.data.ConnectionResult.Unauthorized -> {
+                            Toast.makeText(
+                                context,
+                                "Errore 401: Token non autorizzato o non valido.",
+                                Toast.LENGTH_LONG
+                            ).show()
+                        }
+                        is com.example.myapplication.data.ConnectionResult.Error -> {
+                            if (result.suggestedUrl != null) {
+                                serverUrl = result.suggestedUrl
+                                prefs.serverUrl = result.suggestedUrl
+                                Toast.makeText(
+                                    context,
+                                    "Trovato Home Assistant su ${result.suggestedUrl}! URL aggiornato.",
+                                    Toast.LENGTH_LONG
+                                ).show()
+                                HaCompositeWidget().updateAll(context)
+                            } else {
+                                Toast.makeText(
+                                    context,
+                                    "Errore connessione: ${result.message}",
+                                    Toast.LENGTH_LONG
+                                ).show()
+                            }
+                        }
                     }
                 }
             },

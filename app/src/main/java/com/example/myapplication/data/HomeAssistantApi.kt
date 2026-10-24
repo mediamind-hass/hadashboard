@@ -1,18 +1,24 @@
 package com.example.myapplication.data
 
+import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.util.Log
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import okhttp3.ConnectionPool
-import okhttp3.Dispatcher
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
+import org.json.JSONArray
 import org.json.JSONObject
+import java.security.SecureRandom
+import java.security.cert.X509Certificate
 import java.util.concurrent.TimeUnit
+import javax.net.ssl.SSLContext
+import javax.net.ssl.SSLSocketFactory
+import javax.net.ssl.TrustManager
+import javax.net.ssl.X509TrustManager
 
 data class EntityStateResult(
     val entityId: String,
@@ -21,275 +27,330 @@ data class EntityStateResult(
     val friendlyName: String? = null
 )
 
-data class WidgetStatesResult(
-    val s1: String = "---",
-    val s2: String = "---",
-    val s3: String = "---",
-    val b1: String = "off",
-    val b2: String = "off",
-    val b3: String = "off",
-    val b4: String = "off"
-)
+sealed class ConnectionResult {
+    object Success : ConnectionResult()
+    data class Timeout(val url: String, val suggestedUrl: String? = null) : ConnectionResult()
+    data class Unauthorized(val code: Int) : ConnectionResult()
+    data class Error(val message: String, val suggestedUrl: String? = null) : ConnectionResult()
+}
 
-class HomeAssistantApi(private val prefs: HaPreferences) {
+class HomeAssistantApi(
+    private val prefs: HaPreferences,
+    private val context: Context? = null
+) {
+    init {
+        if (context != null) {
+            NetworkUtils.bindProcessToLocalNetwork(context)
+        }
+    }
 
-    companion object {
-        private val client = OkHttpClient.Builder()
-            .connectTimeout(5, TimeUnit.SECONDS)
-            .readTimeout(10, TimeUnit.SECONDS)
-            .writeTimeout(10, TimeUnit.SECONDS)
-            .connectionPool(ConnectionPool(5, 1, TimeUnit.MINUTES))
-            .retryOnConnectionFailure(true)
-            .dispatcher(Dispatcher().apply {
-                maxRequests = 32
-                maxRequestsPerHost = 16
+    private val client: OkHttpClient by lazy {
+        try {
+            val trustAllCerts = arrayOf<TrustManager>(object : X509TrustManager {
+                override fun checkClientTrusted(chain: Array<out X509Certificate>?, authType: String?) {}
+                override fun checkServerTrusted(chain: Array<out X509Certificate>?, authType: String?) {}
+                override fun getAcceptedIssuers(): Array<X509Certificate> = arrayOf()
             })
-            .build()
+            val sslContext = SSLContext.getInstance("TLS")
+            sslContext.init(null, trustAllCerts, SecureRandom())
+            val sslSocketFactory: SSLSocketFactory = sslContext.socketFactory
 
-        // Dedicated fast-failing client for cameras with fresh connections for mobile/foldable network switches
-        private val cameraClient = OkHttpClient.Builder()
-            .connectTimeout(4, TimeUnit.SECONDS)
-            .readTimeout(5, TimeUnit.SECONDS)
-            .connectionPool(ConnectionPool(0, 1, TimeUnit.SECONDS))
-            .retryOnConnectionFailure(true)
-            .build()
+            OkHttpClient.Builder()
+                .sslSocketFactory(sslSocketFactory, trustAllCerts[0] as X509TrustManager)
+                .hostnameVerifier { _, _ -> true }
+                .connectTimeout(10, TimeUnit.SECONDS)
+                .readTimeout(10, TimeUnit.SECONDS)
+                .writeTimeout(10, TimeUnit.SECONDS)
+                .retryOnConnectionFailure(true)
+                .connectionPool(okhttp3.ConnectionPool(0, 1, TimeUnit.NANOSECONDS)) // Disable connection pooling to prevent One UI 9 stale socket reuse issues
+                .build()
+        } catch (e: Exception) {
+            Log.e("HA_API", "Error building OkHttpClient: ${e.localizedMessage}")
+            OkHttpClient.Builder()
+                .connectTimeout(10, TimeUnit.SECONDS)
+                .readTimeout(10, TimeUnit.SECONDS)
+                .build()
+        }
     }
 
-    private fun buildRequest(path: String): Request.Builder? {
-        val serverUrl = prefs.serverUrl
-        val token = prefs.token
-        if (serverUrl.isBlank() || token.isBlank()) return null
-        val url = if (path.startsWith("http")) path else "$serverUrl$path"
-        return Request.Builder()
-            .url(url)
-            .addHeader("Authorization", "Bearer $token")
-            .addHeader("Content-Type", "application/json")
+    private fun buildUrl(path: String): String {
+        var serverUrl = prefs.serverUrl.trim().trimEnd('/')
+        if (serverUrl.isBlank()) return ""
+        if (!serverUrl.startsWith("http://") && !serverUrl.startsWith("https://")) {
+            serverUrl = "http://$serverUrl"
+        }
+        val formattedPath = if (path.startsWith("http")) path else if (path.startsWith("/")) path else "/$path"
+        return if (path.startsWith("http")) path else "$serverUrl$formattedPath"
     }
 
-    private fun formatEntity(raw: String, defaultDomain: String): String {
-        val trimmed = raw.trim()
-        if (trimmed.isBlank()) return "$defaultDomain.unknown"
-        return if (!trimmed.contains(".")) "$defaultDomain.$trimmed" else trimmed
-    }
+    private fun executeCallOkHttp(path: String, isPost: Boolean = false, jsonBodyStr: String? = null): Pair<Int, String?> {
+        val fullUrl = buildUrl(path)
+        val token = prefs.token.trim()
+        if (fullUrl.isBlank() || token.isBlank()) return Pair(-1, null)
 
-    /**
-     * Fetches all widget entity states in a single request using Home Assistant's Template API (/api/template).
-     * Includes automatic retry on cold-start background VPN block.
-     */
-    suspend fun fetchWidgetStates(): WidgetStatesResult = withContext(Dispatchers.IO) {
-        val maxAttempts = 2
-        for (attempt in 0 until maxAttempts) {
-            val start = System.currentTimeMillis()
+        Log.d("HA_API", "OkHttp executing: $fullUrl (isPost=$isPost)")
+
+        val maxRetries = 2
+        for (attempt in 1..maxRetries) {
             try {
-                val reqBuilder = buildRequest("/api/template") ?: return@withContext WidgetStatesResult()
-                
-                val s1Id = formatEntity(prefs.sensor1Entity, "sensor")
-                val s2Id = formatEntity(prefs.sensor2Entity, "sensor")
-                val s3Id = formatEntity(prefs.sensor3Entity, "sensor")
-                val b1Id = formatEntity(prefs.button1Entity, "switch")
-                val b2Id = formatEntity(prefs.button2Entity, "switch")
-                val b3Id = formatEntity(prefs.button3Entity, "switch")
-                val b4Id = formatEntity(prefs.button4Entity, "switch")
+                val requestBuilder = Request.Builder()
+                    .url(fullUrl)
+                    .header("Authorization", "Bearer $token")
+                    .header("Accept", "application/json, text/plain, */*")
+                    .header("User-Agent", "Mozilla/5.0 (Linux; Android 15; SM-F761B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Mobile Safari/537.36")
 
-                val templateStr = """
-                    {
-                      "s1": "{{ states('$s1Id') }}",
-                      "s2": "{{ states('$s2Id') }}",
-                      "s3": "{{ states('$s3Id') }}",
-                      "b1": "{{ states('$b1Id') }}",
-                      "b2": "{{ states('$b2Id') }}",
-                      "b3": "{{ states('$b3Id') }}",
-                      "b4": "{{ states('$b4Id') }}"
-                    }
-                """.trimIndent()
-
-                val jsonBody = JSONObject().apply { put("template", templateStr) }
-                val requestBody = jsonBody.toString().toRequestBody("application/json; charset=utf-8".toMediaType())
-
-                val result = client.newCall(reqBuilder.post(requestBody).build()).execute().use { response ->
-                    val duration = System.currentTimeMillis() - start
-                    if (!response.isSuccessful) {
-                        Log.w("ApiPerf", "fetchWidgetStates failed: HTTP ${response.code} in ${duration}ms")
-                        null
-                    } else {
-                        val bodyStr = response.body?.string() ?: return@use null
-                        val json = JSONObject(bodyStr)
-                        Log.d("ApiPerf", "fetchWidgetStates succeeded in ${duration}ms")
-                        WidgetStatesResult(
-                            s1 = json.optString("s1", "---"),
-                            s2 = json.optString("s2", "---"),
-                            s3 = json.optString("s3", "---"),
-                            b1 = json.optString("b1", "off"),
-                            b2 = json.optString("b2", "off"),
-                            b3 = json.optString("b3", "off"),
-                            b4 = json.optString("b4", "off")
-                        )
-                    }
+                if (isPost) {
+                    val bodyData = (jsonBodyStr ?: "{}").toRequestBody("application/json; charset=utf-8".toMediaType())
+                    requestBuilder.post(bodyData)
+                } else {
+                    requestBuilder.get()
                 }
-                if (result != null) return@withContext result
+
+                client.newCall(requestBuilder.build()).execute().use { response ->
+                    val code = response.code
+                    val bodyStr = response.body?.string()
+                    Log.d("HA_API", "OkHttp response code: $code for $fullUrl")
+                    return Pair(code, bodyStr)
+                }
+            } catch (e: java.net.SocketTimeoutException) {
+                Log.w("HA_API", "OkHttp SocketTimeoutException attempt $attempt/$maxRetries for $fullUrl: ${e.localizedMessage}")
+                if (attempt >= maxRetries) {
+                    Log.e("HA_API", "OkHttp timeout exception for $fullUrl after $maxRetries attempts", e)
+                    return Pair(-1, null)
+                }
+                try { Thread.sleep(500) } catch (_: Exception) {}
             } catch (e: Exception) {
-                val duration = System.currentTimeMillis() - start
-                Log.w("ApiPerf", "fetchWidgetStates attempt ${attempt + 1} failed: ${e.message} in ${duration}ms")
-            }
-            if (attempt < maxAttempts - 1) {
-                try { Thread.sleep(1000) } catch (_: InterruptedException) {}
+                Log.e("HA_API", "OkHttp exception for $fullUrl: ${e.localizedMessage}", e)
+                return Pair(-1, null)
             }
         }
-        WidgetStatesResult()
+        return Pair(-1, null)
+    }
+
+    suspend fun fetchAllStatesMap(): Map<String, EntityStateResult> = withContext(Dispatchers.IO) {
+        try {
+            val (code, bodyStr) = executeCallOkHttp("/api/states")
+            if (code !in 200..299 || bodyStr == null) {
+                Log.e("HA_API", "fetchAllStatesMap failed with HTTP code: $code")
+                return@withContext emptyMap()
+            }
+            val resultMap = mutableMapOf<String, EntityStateResult>()
+            val jsonArray = JSONArray(bodyStr)
+            for (i in 0 until jsonArray.length()) {
+                val json = jsonArray.optJSONObject(i) ?: continue
+                val entityId = json.optString("entity_id", "")
+                if (entityId.isBlank()) continue
+                val state = json.optString("state", "N/A")
+                val attributes = json.optJSONObject("attributes")
+                val unit = if (attributes?.has("unit_of_measurement") == true) attributes.optString("unit_of_measurement") else null
+                val friendlyName = if (attributes?.has("friendly_name") == true) attributes.optString("friendly_name") else null
+                resultMap[entityId] = EntityStateResult(
+                    entityId = entityId,
+                    state = state,
+                    unitOfMeasurement = unit,
+                    friendlyName = friendlyName
+                )
+            }
+            Log.d("HA_API", "fetchAllStatesMap SUCCESS! Loaded ${resultMap.size} entities.")
+            resultMap
+        } catch (e: Exception) {
+            Log.e("HA_API", "Exception in fetchAllStatesMap: ${e.localizedMessage}", e)
+            emptyMap()
+        }
     }
 
     suspend fun fetchEntityState(rawEntityId: String): EntityStateResult? = withContext(Dispatchers.IO) {
-        val entityId = formatEntity(rawEntityId, "sensor")
-        val maxAttempts = 2
-        for (attempt in 0 until maxAttempts) {
-            val start = System.currentTimeMillis()
-            try {
-                val reqBuilder = buildRequest("/api/states/$entityId") ?: return@withContext null
-                val result = client.newCall(reqBuilder.get().build()).execute().use { response ->
-                    val duration = System.currentTimeMillis() - start
-                    if (!response.isSuccessful) {
-                        Log.w("ApiPerf", "fetchEntityState $entityId failed: HTTP ${response.code} in ${duration}ms")
-                        null
-                    } else {
-                        val bodyStr = response.body?.string() ?: return@use null
-                        val json = JSONObject(bodyStr)
-                        val state = json.optString("state", "N/A")
-                        val attributes = json.optJSONObject("attributes")
-                        val unit = attributes?.optString("unit_of_measurement")
-                        val friendlyName = attributes?.optString("friendly_name")
-                        Log.d("ApiPerf", "fetchEntityState $entityId succeeded in ${duration}ms (state: $state)")
-                        EntityStateResult(entityId, state, unit, friendlyName)
-                    }
-                }
-                if (result != null) return@withContext result
-            } catch (e: Exception) {
-                val duration = System.currentTimeMillis() - start
-                Log.w("ApiPerf", "fetchEntityState $entityId attempt ${attempt + 1} failed: ${e.message} after ${duration}ms")
+        val trimmed = rawEntityId.trim()
+        if (trimmed.isBlank()) return@withContext null
+        val entityId = if (!trimmed.contains(".")) "sensor.$trimmed" else trimmed
+        try {
+            val (code, bodyStr) = executeCallOkHttp("/api/states/$entityId")
+            if (code !in 200..299 || bodyStr == null) {
+                Log.e("HA_API", "fetchEntityState($entityId) failed with HTTP code: $code")
+                return@withContext null
             }
-            if (attempt < maxAttempts - 1) {
-                try { Thread.sleep(500) } catch (_: InterruptedException) {}
-            }
+            val json = JSONObject(bodyStr)
+            val state = json.optString("state", "N/A")
+            val attributes = json.optJSONObject("attributes")
+            val unit = if (attributes?.has("unit_of_measurement") == true) attributes.optString("unit_of_measurement") else null
+            val friendlyName = if (attributes?.has("friendly_name") == true) attributes.optString("friendly_name") else null
+            EntityStateResult(
+                entityId = entityId,
+                state = state,
+                unitOfMeasurement = unit,
+                friendlyName = friendlyName
+            )
+        } catch (e: Exception) {
+            Log.e("HA_API", "Exception in fetchEntityState($entityId): ${e.localizedMessage}", e)
+            null
         }
-        null
     }
 
     suspend fun callEntityService(rawEntityId: String, actionService: String = "toggle"): Boolean = withContext(Dispatchers.IO) {
-        val maxAttempts = 2
-        val entityId = formatEntity(rawEntityId, "switch")
-        val parts = entityId.split(".", limit = 2)
-        if (parts.size < 2) return@withContext false
-        val domain = parts[0]
+        val trimmed = rawEntityId.trim()
+        if (trimmed.isBlank()) return@withContext false
+        val entityId = if (!trimmed.contains(".")) "switch.$trimmed" else trimmed
+        try {
+            val parts = entityId.split(".", limit = 2)
+            if (parts.size < 2) return@withContext false
+            val domain = parts[0]
+            val entityName = parts[1]
 
-        val serviceToCall = when (domain) {
-            "button" -> "press"
-            "script", "scene" -> "turn_on"
-            else -> actionService
-        }
+            val jsonBody = JSONObject().apply {
+                put("entity_id", entityId)
+            }
+            val jsonStr = jsonBody.toString()
 
-        for (attempt in 0 until maxAttempts) {
-            val start = System.currentTimeMillis()
-            try {
-                Log.d("ApiPerf", "callEntityService started for rawEntityId: $rawEntityId (attempt ${attempt + 1})")
-                Log.d("ApiPerf", "callEntityService domain: $domain, serviceToCall: $serviceToCall, entityId: $entityId")
-                val jsonBody = JSONObject().apply { put("entity_id", entityId) }
-                val requestBody = jsonBody.toString().toRequestBody("application/json; charset=utf-8".toMediaType())
-                val reqBuilder = buildRequest("/api/services/$domain/$serviceToCall") ?: return@withContext false
-                
-                Log.d("ApiPerf", "callEntityService executing network call")
-                val isSuccess = client.newCall(reqBuilder.post(requestBody).build()).execute().use { response ->
-                    val duration = System.currentTimeMillis() - start
-                    Log.d("ApiPerf", "callEntityService result: ${response.isSuccessful} in ${duration}ms")
-                    response.isSuccessful
+            val actualService = if (actionService == "toggle") {
+                when (domain) {
+                    "script" -> "turn_on"
+                    "automation" -> "trigger"
+                    "scene" -> "turn_on"
+                    "button", "input_button" -> "press"
+                    else -> "toggle"
                 }
-                if (isSuccess) return@withContext true
-            } catch (e: Throwable) {
-                val duration = System.currentTimeMillis() - start
-                Log.w("ApiPerf", "callEntityService attempt ${attempt + 1} failed (${e.javaClass.simpleName}): ${e.message} after ${duration}ms")
+            } else {
+                actionService
             }
-            if (attempt < maxAttempts - 1) {
-                try { Thread.sleep(500) } catch (_: InterruptedException) {}
+
+            // Attempt 1: /api/services/domain/actualService
+            val (code, _) = executeCallOkHttp("/api/services/$domain/$actualService", isPost = true, jsonBodyStr = jsonStr)
+            if (code in 200..299) return@withContext true
+
+            // Attempt 2: /api/services/homeassistant/turn_on
+            val (code2, _) = executeCallOkHttp("/api/services/homeassistant/turn_on", isPost = true, jsonBodyStr = jsonStr)
+            if (code2 in 200..299) return@withContext true
+
+            // Attempt 3 for scripts
+            if (domain == "script") {
+                val (fallbackCode, _) = executeCallOkHttp("/api/services/script/$entityName", isPost = true, jsonBodyStr = jsonStr)
+                if (fallbackCode in 200..299) return@withContext true
             }
+
+            false
+        } catch (e: Exception) {
+            Log.e("HA_API", "Exception in callEntityService($entityId): ${e.localizedMessage}", e)
+            false
         }
-        false
     }
 
     suspend fun fetchCameraSnapshot(rawCameraEntityId: String): Bitmap? = withContext(Dispatchers.IO) {
-        val cameraEntityId = formatEntity(rawCameraEntityId, "camera")
+        val cameraEntityId = rawCameraEntityId.trim().let {
+            if (it.isNotBlank() && !it.contains(".")) "camera.$it" else it
+        }
         if (cameraEntityId.isBlank()) return@withContext null
 
-        val maxAttempts = 2
-        for (attempt in 0 until maxAttempts) {
-            val start = System.currentTimeMillis()
-            try {
-                val reqBuilder = buildRequest("/api/camera_proxy/$cameraEntityId") ?: return@withContext null
-                val bitmap = client.newCall(reqBuilder.get().build()).execute().use { response ->
-                    val duration = System.currentTimeMillis() - start
-                    if (!response.isSuccessful) {
-                        Log.w("ApiPerf", "fetchCameraSnapshot $cameraEntityId failed: HTTP ${response.code} in ${duration}ms")
-                        null
-                    } else {
-                        val bytes = response.body?.bytes() ?: return@use null
-                        if (bytes.isEmpty()) {
-                            Log.w("ApiPerf", "fetchCameraSnapshot $cameraEntityId empty bytes in ${duration}ms")
-                            return@use null
-                        }
-                        val rawBitmap = BitmapFactory.decodeByteArray(bytes, 0, bytes.size) ?: return@use null
-                        Log.d("ApiPerf", "fetchCameraSnapshot $cameraEntityId succeeded in ${duration}ms (${bytes.size} bytes)")
+        val directBitmap = downloadImageFromPath("/api/camera_proxy/$cameraEntityId")
+        if (directBitmap != null) return@withContext directBitmap
 
-                        val maxWidth = 400
-                        val maxHeight = 250
-                        if (rawBitmap.width > maxWidth || rawBitmap.height > maxHeight) {
-                            val scale = minOf(maxWidth.toFloat() / rawBitmap.width, maxHeight.toFloat() / rawBitmap.height)
-                            val scaledW = (rawBitmap.width * scale).toInt().coerceAtLeast(1)
-                            val scaledH = (rawBitmap.height * scale).toInt().coerceAtLeast(1)
-                            Bitmap.createScaledBitmap(rawBitmap, scaledW, scaledH, true)
-                        } else {
-                            rawBitmap
-                        }
-                    }
+        try {
+            val (code, bodyStr) = executeCallOkHttp("/api/states/$cameraEntityId")
+            if (code in 200..299 && bodyStr != null) {
+                val json = JSONObject(bodyStr)
+                val attributes = json.optJSONObject("attributes")
+                val entityPicture = if (attributes?.has("entity_picture") == true) attributes.optString("entity_picture") else null
+                if (!entityPicture.isNullOrBlank()) {
+                    return@withContext downloadImageFromPath(entityPicture)
                 }
-                if (bitmap != null) return@withContext bitmap
-            } catch (e: Exception) {
-                val duration = System.currentTimeMillis() - start
-                Log.w("ApiPerf", "fetchCameraSnapshot $cameraEntityId attempt ${attempt + 1} failed (${e.javaClass.simpleName}) after ${duration}ms")
             }
-            if (attempt < maxAttempts - 1) {
-                try { Thread.sleep(300) } catch (_: InterruptedException) {}
-            }
+        } catch (e: Exception) {
+            Log.e("HA_API", "Exception in fetchCameraSnapshot($cameraEntityId): ${e.localizedMessage}", e)
         }
         null
     }
 
-    suspend fun testConnectionDetailed(): String = withContext(Dispatchers.IO) {
-        val maxAttempts = 2
-        for (attempt in 0 until maxAttempts) {
-            val start = System.currentTimeMillis()
-            val serverUrl = prefs.serverUrl
-            val token = prefs.token
-            if (serverUrl.isBlank()) return@withContext "URL Server vuoto"
-            if (token.isBlank()) return@withContext "Token Bearer vuoto"
+    private fun downloadImageFromPath(path: String): Bitmap? {
+        val fullUrl = buildUrl(path)
+        val token = prefs.token.trim()
+        if (fullUrl.isBlank() || token.isBlank()) return null
 
+        val maxRetries = 2
+        for (attempt in 1..maxRetries) {
             try {
-                val reqBuilder = buildRequest("/api/") ?: return@withContext "URL non valido"
-                val resMsg = client.newCall(reqBuilder.get().build()).execute().use { response ->
-                    val duration = System.currentTimeMillis() - start
-                    if (response.isSuccessful) {
-                        Log.d("ApiPerf", "testConnectionDetailed succeeded in ${duration}ms")
-                        "OK"
+                val request = Request.Builder()
+                    .url(fullUrl)
+                    .header("Authorization", "Bearer $token")
+                    .header("User-Agent", "Mozilla/5.0 (Linux; Android 15; SM-F761B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Mobile Safari/537.36")
+                    .get()
+                    .build()
+
+                client.newCall(request).execute().use { response ->
+                    if (!response.isSuccessful) return null
+                    val bytes = response.body?.bytes() ?: return null
+                    if (bytes.isEmpty()) return null
+                    val rawBitmap = BitmapFactory.decodeByteArray(bytes, 0, bytes.size) ?: return null
+
+                    val maxWidth = 400
+                    val maxHeight = 250
+                    return if (rawBitmap.width > maxWidth || rawBitmap.height > maxHeight) {
+                        val scale = minOf(maxWidth.toFloat() / rawBitmap.width, maxHeight.toFloat() / rawBitmap.height)
+                        val scaledW = (rawBitmap.width * scale).toInt().coerceAtLeast(1)
+                        val scaledH = (rawBitmap.height * scale).toInt().coerceAtLeast(1)
+                        Bitmap.createScaledBitmap(rawBitmap, scaledW, scaledH, true)
                     } else {
-                        Log.w("ApiPerf", "testConnectionDetailed failed: HTTP ${response.code} in ${duration}ms")
-                        null
+                        rawBitmap
                     }
                 }
-                if (resMsg == "OK") return@withContext "OK"
             } catch (e: Exception) {
-                val duration = System.currentTimeMillis() - start
-                Log.w("ApiPerf", "testConnectionDetailed attempt ${attempt + 1} failed: ${e.message} in ${duration}ms")
-            }
-            if (attempt < maxAttempts - 1) {
-                try { Thread.sleep(1000) } catch (_: InterruptedException) {}
+                Log.e("HA_API", "downloadImageFromPath exception for $fullUrl: ${e.localizedMessage}", e)
+                if (attempt >= maxRetries) return null
+                try { Thread.sleep(500) } catch (_: Exception) {}
             }
         }
-        "Errore di Connessione"
+        return null
+    }
+
+    private fun probeUrl(urlStr: String): Boolean {
+        return try {
+            val token = prefs.token.trim()
+            if (token.isBlank()) return false
+            val request = Request.Builder()
+                .url(urlStr)
+                .header("Authorization", "Bearer $token")
+                .get()
+                .build()
+            client.newCall(request).execute().use { response ->
+                response.isSuccessful || response.code == 401
+            }
+        } catch (_: Exception) {
+            false
+        }
+    }
+
+    suspend fun testConnectionDetails(): ConnectionResult = withContext(Dispatchers.IO) {
+        val mainResult = try {
+            val (code, _) = executeCallOkHttp("/api/")
+            if (code in 200..299) {
+                ConnectionResult.Success
+            } else if (code == 401) {
+                ConnectionResult.Unauthorized(code)
+            } else {
+                ConnectionResult.Error("HTTP $code")
+            }
+        } catch (_: Exception) {
+            ConnectionResult.Timeout(prefs.serverUrl)
+        }
+
+        if (mainResult is ConnectionResult.Timeout || mainResult is ConnectionResult.Error) {
+            val host = try { java.net.URI(prefs.serverUrl).host } catch (_: Exception) { null }
+            if (!host.isNullOrBlank()) {
+                val candidatePorts = listOf(8123, 18888, 80, 443, 8443, 30103)
+                val currentPort = try { java.net.URI(prefs.serverUrl).port.let { if (it != -1) it else 80 } } catch (_: Exception) { 80 }
+                for (port in candidatePorts) {
+                    if (port == currentPort) continue
+                    val scheme = if (port == 443 || port == 8443) "https" else "http"
+                    val testUrl = "$scheme://$host:$port/api/"
+                    if (probeUrl(testUrl)) {
+                        val suggested = "$scheme://$host:$port"
+                        return@withContext ConnectionResult.Timeout(prefs.serverUrl, suggestedUrl = suggested)
+                    }
+                }
+            }
+        }
+        return@withContext mainResult
+    }
+
+    suspend fun testConnection(): Boolean {
+        return testConnectionDetails() == ConnectionResult.Success
     }
 }

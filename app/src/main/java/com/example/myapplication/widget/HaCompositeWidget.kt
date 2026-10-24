@@ -1,18 +1,11 @@
 package com.example.myapplication.widget
 
-import android.appwidget.AppWidgetManager
 import android.content.Context
 import android.graphics.Bitmap
-import android.graphics.BitmapFactory
-import android.util.Log
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.isSpecified
 import androidx.compose.ui.unit.sp
-import androidx.datastore.preferences.core.Preferences
-import androidx.datastore.preferences.core.longPreferencesKey
-import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.glance.Button
 import androidx.glance.ButtonDefaults
 import androidx.glance.GlanceId
@@ -20,18 +13,14 @@ import androidx.glance.GlanceModifier
 import androidx.glance.Image
 import androidx.glance.ImageProvider
 import androidx.glance.LocalSize
-import androidx.glance.action.Action
-import androidx.glance.action.ActionParameters
 import androidx.glance.action.actionParametersOf
-import androidx.glance.action.actionStartActivity
 import androidx.glance.appwidget.GlanceAppWidget
-import androidx.glance.appwidget.GlanceAppWidgetManager
 import androidx.glance.appwidget.SizeMode
+import androidx.glance.appwidget.action.actionRunCallback
 import androidx.glance.appwidget.cornerRadius
 import androidx.glance.appwidget.provideContent
 import androidx.glance.background
 import androidx.glance.color.ColorProvider
-import androidx.glance.currentState
 import androidx.glance.layout.Alignment
 import androidx.glance.layout.Box
 import androidx.glance.layout.Column
@@ -48,98 +37,101 @@ import androidx.glance.text.FontWeight
 import androidx.glance.text.Text
 import androidx.glance.text.TextStyle
 import com.example.myapplication.data.HaPreferences
-import java.io.File
-import java.io.FileOutputStream
+import com.example.myapplication.data.HomeAssistantApi
 
 class HaCompositeWidget : GlanceAppWidget() {
-
-    companion object {
-        val B1_STATE_KEY = stringPreferencesKey("b1_state")
-        val B2_STATE_KEY = stringPreferencesKey("b2_state")
-        val B3_STATE_KEY = stringPreferencesKey("b3_state")
-        val B4_STATE_KEY = stringPreferencesKey("b4_state")
-
-        val S1_VAL_KEY = stringPreferencesKey("s1_val")
-        val S2_VAL_KEY = stringPreferencesKey("s2_val")
-        val S3_VAL_KEY = stringPreferencesKey("s3_val")
-
-        val CAM_UPDATE_KEY = longPreferencesKey("cam_update_time")
-
-        fun loadCachedCameraBitmap(context: Context): Bitmap? {
-            return try {
-                val file = File(context.cacheDir, "camera_cache.jpg")
-                if (file.exists()) {
-                    BitmapFactory.decodeFile(file.absolutePath)
-                } else {
-                    null
-                }
-            } catch (_: Exception) {
-                null
-            }
-        }
-
-        fun saveCachedCameraBitmap(context: Context, bitmap: Bitmap) {
-            try {
-                val file = File(context.cacheDir, "camera_cache.jpg")
-                FileOutputStream(file).use { out ->
-                    bitmap.compress(Bitmap.CompressFormat.JPEG, 90, out)
-                }
-            } catch (_: Exception) {
-            }
-        }
-    }
 
     override val sizeMode: SizeMode = SizeMode.Exact
 
     override suspend fun provideGlance(context: Context, id: GlanceId) {
-        var isCoverScreen = false
-        try {
-            val manager = GlanceAppWidgetManager(context)
-            val appWidgetId = manager.getAppWidgetId(id)
-            val appWidgetManager = AppWidgetManager.getInstance(context)
-            val options = appWidgetManager.getAppWidgetOptions(appWidgetId)
-            val minWidth = options?.getInt(AppWidgetManager.OPTION_APPWIDGET_MIN_WIDTH, 250) ?: 250
+        val prefs = HaPreferences(context)
+        val api = HomeAssistantApi(prefs, context)
 
-            if (minWidth < 180) {
-                isCoverScreen = true
-            }
-        } catch (_: Exception) {}
+        var cameraBitmap: Bitmap? = null
+        var s1Val = prefs.cachedSensor1Val
+        var s2Val = prefs.cachedSensor2Val
+        var s3Val = prefs.cachedSensor3Val
 
-        if (isCoverScreen) {
-            provideContent {
-                Box(
-                    modifier = GlanceModifier.fillMaxSize().background(Color(0xFF1E1E2C)).padding(8.dp),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text(
-                        text = "Usa lo schermo principale",
-                        style = TextStyle(color = ColorProvider(day = Color.White, night = Color.White), fontSize = 11.sp, fontWeight = FontWeight.Bold)
-                    )
+        var b1On = prefs.cachedBtn1On
+        var b2On = prefs.cachedBtn2On
+        var b3On = prefs.cachedBtn3On
+        var b4On = prefs.cachedBtn4On
+
+        if (prefs.isConfigured) {
+            try {
+                // Try fetching fresh states via OkHttp in background. If One UI 9 restricts background socket, catch and use cache.
+                val allStatesMap = api.fetchAllStatesMap()
+
+                if (allStatesMap.isNotEmpty()) {
+                    val s1Res = allStatesMap[prefs.sensor1Entity]
+                    if (s1Res != null) {
+                        s1Val = formatSensorVal(s1Res.state, prefs.sensor1Unit)
+                        prefs.cachedSensor1Val = s1Val
+                    }
+
+                    val s2Res = allStatesMap[prefs.sensor2Entity]
+                    if (s2Res != null) {
+                        s2Val = formatSensorVal(s2Res.state, prefs.sensor2Unit)
+                        prefs.cachedSensor2Val = s2Val
+                    }
+
+                    val s3Res = allStatesMap[prefs.sensor3Entity]
+                    if (s3Res != null) {
+                        s3Val = formatSensorVal(s3Res.state, prefs.sensor3Unit)
+                        prefs.cachedSensor3Val = s3Val
+                    }
+
+                    val b1Res = allStatesMap[prefs.button1Entity]
+                    if (b1Res != null) {
+                        b1On = isEntityOn(b1Res.state)
+                        prefs.cachedBtn1On = b1On
+                    }
+
+                    val b2Res = allStatesMap[prefs.button2Entity]
+                    if (b2Res != null) {
+                        b2On = isEntityOn(b2Res.state)
+                        prefs.cachedBtn2On = b2On
+                    }
+
+                    val b3Res = allStatesMap[prefs.button3Entity]
+                    if (b3Res != null) {
+                        b3On = isEntityOn(b3Res.state)
+                        prefs.cachedBtn3On = b3On
+                    }
+
+                    val b4Res = allStatesMap[prefs.button4Entity]
+                    if (b4Res != null) {
+                        b4On = isEntityOn(b4Res.state)
+                        prefs.cachedBtn4On = b4On
+                    }
                 }
+
+                // Try fetching camera snapshot
+                cameraBitmap = try { api.fetchCameraSnapshot(prefs.cameraEntity) } catch (_: Exception) { null }
+                if (cameraBitmap != null) {
+                    try {
+                        val cacheFile = java.io.File(context.cacheDir, "camera_cache.jpg")
+                        cacheFile.outputStream().use { out ->
+                            cameraBitmap.compress(Bitmap.CompressFormat.JPEG, 90, out)
+                        }
+                    } catch (_: Exception) {}
+                }
+            } catch (_: Exception) {
+                // Background network restricted -> fall back to cache values already loaded above
             }
-            return
+
+            // Fallback to cache file for camera if null
+            if (cameraBitmap == null) {
+                try {
+                    val cacheFile = java.io.File(context.cacheDir, "camera_cache.jpg")
+                    if (cacheFile.exists()) {
+                        cameraBitmap = android.graphics.BitmapFactory.decodeFile(cacheFile.absolutePath)
+                    }
+                } catch (_: Exception) {}
+            }
         }
 
-        val prefs = HaPreferences(context)
-
         provideContent {
-            // Read Glance State DataStore keys directly to register Glance UI dependency
-            val glanceState = currentState<Preferences>()
-
-            val b1State = glanceState[B1_STATE_KEY] ?: prefs.cachedButton1State
-            val b2State = glanceState[B2_STATE_KEY] ?: prefs.cachedButton2State
-            val b3State = glanceState[B3_STATE_KEY] ?: prefs.cachedButton3State
-            val b4State = glanceState[B4_STATE_KEY] ?: prefs.cachedButton4State
-
-            val s1Val = glanceState[S1_VAL_KEY] ?: prefs.cachedSensor1Val
-            val s2Val = glanceState[S2_VAL_KEY] ?: prefs.cachedSensor2Val
-            val s3Val = glanceState[S3_VAL_KEY] ?: prefs.cachedSensor3Val
-
-            val _camTrigger = glanceState[CAM_UPDATE_KEY] ?: 0L
-            val cameraBitmap: Bitmap? = loadCachedCameraBitmap(context)
-
-            Log.d("ApiPerf", "provideGlance rendered: b1State=$b1State, b2State=$b2State, b3State=$b3State, b4State=$b4State")
-
             WidgetContent(
                 isConfigured = prefs.isConfigured,
                 cameraBitmap = cameraBitmap,
@@ -149,16 +141,35 @@ class HaCompositeWidget : GlanceAppWidget() {
                 s2Val = s2Val,
                 s3Name = prefs.sensor3Name,
                 s3Val = s3Val,
+                b1Entity = prefs.button1Entity,
                 b1Name = prefs.button1Name,
-                b1State = b1State,
+                b1On = b1On,
+                b2Entity = prefs.button2Entity,
                 b2Name = prefs.button2Name,
-                b2State = b2State,
+                b2On = b2On,
+                b3Entity = prefs.button3Entity,
                 b3Name = prefs.button3Name,
-                b3State = b3State,
+                b3On = b3On,
+                b4Entity = prefs.button4Entity,
                 b4Name = prefs.button4Name,
-                b4State = b4State
+                b4On = b4On
             )
         }
+    }
+
+    private fun isEntityOn(state: String?): Boolean {
+        if (state == null) return false
+        val s = state.trim().lowercase()
+        return s == "on" || s == "open" || s == "unlocked" || s == "playing" || s == "true" || s == "home"
+    }
+
+    private fun formatSensorVal(raw: String?, unit: String): String {
+        if (raw == null || raw == "N/A" || raw == "unavailable") return "---"
+        val trimmedRaw = raw.trim()
+        val trimmedUnit = unit.trim()
+        if (trimmedUnit.isEmpty()) return trimmedRaw
+        if (trimmedRaw.endsWith(trimmedUnit, ignoreCase = true)) return trimmedRaw
+        return "$trimmedRaw $trimmedUnit"
     }
 
     @Composable
@@ -168,15 +179,14 @@ class HaCompositeWidget : GlanceAppWidget() {
         s1Name: String, s1Val: String,
         s2Name: String, s2Val: String,
         s3Name: String, s3Val: String,
-        b1Name: String, b1State: String,
-        b2Name: String, b2State: String,
-        b3Name: String, b3State: String,
-        b4Name: String, b4State: String
+        b1Entity: String, b1Name: String, b1On: Boolean,
+        b2Entity: String, b2Name: String, b2On: Boolean,
+        b3Entity: String, b3Name: String, b3On: Boolean,
+        b4Entity: String, b4Name: String, b4On: Boolean
     ) {
         val size = LocalSize.current
-        val totalWidth = if (size.width.isSpecified && size.width > 0.dp) size.width else 250.dp
+        val totalWidth = size.width
 
-        // Calculate exact 65% width X from actual widget size provided by SizeMode.Exact
         val cameraWidth = (totalWidth * 0.65f) - 6.dp
 
         val bgColor = Color(0xFF1E1E2C)
@@ -184,17 +194,8 @@ class HaCompositeWidget : GlanceAppWidget() {
         val accentColor = Color(0xFF00ADB5)
         val textColor = Color(0xFFEEEEEE)
         val mutedTextColor = Color(0xFFAAAAAA)
-
-        // Distinct colors for button States:
-        // ROSSO = Attivazione in corso / Loading
-        // BLU = Stato Attivo / On (Verificato)
-        // GRIGIO = Disattivo / Off
-        val loadingBtnBg = Color(0xFFE53935)
-        val activeBtnBg = Color(0xFF1E88E5)
+        val activeBtnBg = Color(0xFF00ADB5)
         val inactiveBtnBg = Color(0xFF393E46)
-
-        val btnIndexKey = ActionParameters.Key<Int>(WidgetBridgeActivity.EXTRA_BUTTON_INDEX)
-        val refreshKey = ActionParameters.Key<Boolean>(WidgetBridgeActivity.EXTRA_IS_REFRESH)
 
         Column(
             modifier = GlanceModifier
@@ -216,7 +217,7 @@ class HaCompositeWidget : GlanceAppWidget() {
                 return@Column
             }
 
-            // 1. TOP SECTION: CAMERA (65% Width X) + 3 SENSORS (Fills all vertical space above buttons)
+            // 1. TOP SECTION: CAMERA (65% Width X) + 3 SENSORS
             Row(
                 modifier = GlanceModifier
                     .fillMaxWidth()
@@ -257,9 +258,7 @@ class HaCompositeWidget : GlanceAppWidget() {
                     ) {
                         Button(
                             text = "🔄",
-                            onClick = actionStartActivity<WidgetBridgeActivity>(
-                                actionParametersOf(refreshKey to true)
-                            ),
+                            onClick = actionRunCallback<RefreshWidgetAction>(),
                             colors = ButtonDefaults.buttonColors(
                                 backgroundColor = ColorProvider(day = Color(0xAA000000), night = Color(0xAA000000)),
                                 contentColor = ColorProvider(day = textColor, night = textColor)
@@ -270,7 +269,7 @@ class HaCompositeWidget : GlanceAppWidget() {
 
                 Spacer(modifier = GlanceModifier.width(4.dp))
 
-                // 3 SENSORS COLUMN (35% Width X, 3 lines stacked vertically)
+                // 3 SENSORS COLUMN
                 Column(
                     modifier = GlanceModifier
                         .defaultWeight()
@@ -311,7 +310,7 @@ class HaCompositeWidget : GlanceAppWidget() {
 
             Spacer(modifier = GlanceModifier.height(5.dp))
 
-            // 2. BOTTOM SECTION: 4 BUTTONS HORIZONTAL ROW (Height 56dp for plenty of space, 11sp font, 2dp gaps)
+            // 2. BOTTOM SECTION: 4 BUTTONS HORIZONTAL ROW
             Row(
                 modifier = GlanceModifier
                     .fillMaxWidth()
@@ -319,54 +318,42 @@ class HaCompositeWidget : GlanceAppWidget() {
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 ActionButton(
+                    entityId = b1Entity,
                     name = b1Name,
-                    state = b1State,
-                    loadingBg = loadingBtnBg,
+                    isOn = b1On,
                     activeBg = activeBtnBg,
                     inactiveBg = inactiveBtnBg,
                     textColor = textColor,
-                    onClickAction = actionStartActivity<WidgetBridgeActivity>(
-                        actionParametersOf(btnIndexKey to 1)
-                    ),
                     modifier = GlanceModifier.defaultWeight().fillMaxHeight()
                 )
                 Spacer(modifier = GlanceModifier.width(2.dp))
                 ActionButton(
+                    entityId = b2Entity,
                     name = b2Name,
-                    state = b2State,
-                    loadingBg = loadingBtnBg,
+                    isOn = b2On,
                     activeBg = activeBtnBg,
                     inactiveBg = inactiveBtnBg,
                     textColor = textColor,
-                    onClickAction = actionStartActivity<WidgetBridgeActivity>(
-                        actionParametersOf(btnIndexKey to 2)
-                    ),
                     modifier = GlanceModifier.defaultWeight().fillMaxHeight()
                 )
                 Spacer(modifier = GlanceModifier.width(2.dp))
                 ActionButton(
+                    entityId = b3Entity,
                     name = b3Name,
-                    state = b3State,
-                    loadingBg = loadingBtnBg,
+                    isOn = b3On,
                     activeBg = activeBtnBg,
                     inactiveBg = inactiveBtnBg,
                     textColor = textColor,
-                    onClickAction = actionStartActivity<WidgetBridgeActivity>(
-                        actionParametersOf(btnIndexKey to 3)
-                    ),
                     modifier = GlanceModifier.defaultWeight().fillMaxHeight()
                 )
                 Spacer(modifier = GlanceModifier.width(2.dp))
                 ActionButton(
+                    entityId = b4Entity,
                     name = b4Name,
-                    state = b4State,
-                    loadingBg = loadingBtnBg,
+                    isOn = b4On,
                     activeBg = activeBtnBg,
                     inactiveBg = inactiveBtnBg,
                     textColor = textColor,
-                    onClickAction = actionStartActivity<WidgetBridgeActivity>(
-                        actionParametersOf(btnIndexKey to 4)
-                    ),
                     modifier = GlanceModifier.defaultWeight().fillMaxHeight()
                 )
             }
@@ -412,25 +399,23 @@ class HaCompositeWidget : GlanceAppWidget() {
 
     @Composable
     private fun ActionButton(
+        entityId: String,
         name: String,
-        state: String,
-        loadingBg: Color,
+        isOn: Boolean,
         activeBg: Color,
         inactiveBg: Color,
         textColor: Color,
-        onClickAction: Action,
         modifier: GlanceModifier
     ) {
-        val bg = when (state.lowercase()) {
-            "loading", "pending" -> loadingBg // ROSSO per attivazione in corso
-            "on", "active", "true" -> activeBg // BLU per attivo verificato
-            else -> inactiveBg // GRIGIO per disattivo
-        }
-        val displayText = if (name.isNotBlank()) name else "Btn"
+        val bg = if (isOn) activeBg else inactiveBg
+        val prefix = if (isOn) "⚡" else "○"
+        val displayText = if (name.isNotBlank()) "$prefix $name" else prefix
 
         Button(
             text = displayText,
-            onClick = onClickAction,
+            onClick = actionRunCallback<ToggleEntityAction>(
+                actionParametersOf(ToggleEntityAction.KEY_ENTITY_ID to entityId)
+            ),
             modifier = modifier.cornerRadius(6.dp),
             colors = ButtonDefaults.buttonColors(
                 backgroundColor = ColorProvider(day = bg, night = bg),

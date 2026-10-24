@@ -8,13 +8,31 @@ class HaPreferences(context: Context) {
         context.getSharedPreferences("ha_widget_prefs", Context.MODE_PRIVATE)
 
     var serverUrl: String
-        get() = prefs.getString("server_url", "") ?: ""
-        set(value) {
-            var trimmed = value.trim().trimEnd('/')
-            if (trimmed.isNotBlank() && !trimmed.startsWith("http://") && !trimmed.startsWith("https://")) {
-                trimmed = "http://$trimmed"
+        get() {
+            val raw = prefs.getString("server_url", "http://192.168.16.33:30103") ?: "http://192.168.16.33:30103"
+            val trimmed = raw.trim().trimEnd('/')
+            val formatted = if (trimmed.isNotBlank() && !trimmed.startsWith("http://") && !trimmed.startsWith("https://")) {
+                "http://$trimmed"
+            } else {
+                trimmed
             }
-            prefs.edit().putString("server_url", trimmed).apply()
+            return if (formatted.contains("192.168.16.33:8123")) {
+                "http://192.168.16.33:30103"
+            } else {
+                formatted
+            }
+        }
+        set(value) {
+            val trimmed = value.trim().trimEnd('/')
+            var formatted = if (trimmed.isNotBlank() && !trimmed.startsWith("http://") && !trimmed.startsWith("https://")) {
+                "http://$trimmed"
+            } else {
+                trimmed
+            }
+            if (formatted.contains("192.168.16.33:8123")) {
+                formatted = "http://192.168.16.33:30103"
+            }
+            prefs.edit().putString("server_url", formatted).apply()
         }
 
     var token: String
@@ -96,64 +114,35 @@ class HaPreferences(context: Context) {
         get() = prefs.getString("btn_4_name", "Allarme") ?: "Allarme"
         set(value) = prefs.edit().putString("btn_4_name", value.trim()).apply()
 
-    val isConfigured: Boolean
-        get() = serverUrl.isNotBlank() && token.isNotBlank()
-
-    // Cached values for offline/cold-start resilience
+    // Caching for One UI 9 background widget resilience
     var cachedSensor1Val: String
-        get() = prefs.getString("cached_s1", "---") ?: "---"
-        set(value) = prefs.edit().putString("cached_s1", value).apply()
+        get() = prefs.getString("cached_s1_val", "---") ?: "---"
+        set(value) = prefs.edit().putString("cached_s1_val", value).apply()
 
     var cachedSensor2Val: String
-        get() = prefs.getString("cached_s2", "---") ?: "---"
-        set(value) = prefs.edit().putString("cached_s2", value).apply()
+        get() = prefs.getString("cached_s2_val", "---") ?: "---"
+        set(value) = prefs.edit().putString("cached_s2_val", value).apply()
 
     var cachedSensor3Val: String
-        get() = prefs.getString("cached_s3", "---") ?: "---"
-        set(value) = prefs.edit().putString("cached_s3", value).apply()
+        get() = prefs.getString("cached_s3_val", "---") ?: "---"
+        set(value) = prefs.edit().putString("cached_s3_val", value).apply()
 
-    // 3-State button caching: "off" (Grey), "loading" (Red), "on" (Blue)
-    var cachedButton1State: String
-        get() = prefs.getString("cached_b1_state", if (cachedButton1On) "on" else "off") ?: "off"
-        set(value) {
-            prefs.edit().putString("cached_b1_state", value).apply()
-            prefs.edit().putBoolean("cached_b1", value == "on" || value == "loading").apply()
-        }
+    var cachedBtn1On: Boolean
+        get() = prefs.getBoolean("cached_b1_on", false)
+        set(value) = prefs.edit().putBoolean("cached_b1_on", value).apply()
 
-    var cachedButton2State: String
-        get() = prefs.getString("cached_b2_state", if (cachedButton2On) "on" else "off") ?: "off"
-        set(value) {
-            prefs.edit().putString("cached_b2_state", value).apply()
-            prefs.edit().putBoolean("cached_b2", value == "on" || value == "loading").apply()
-        }
+    var cachedBtn2On: Boolean
+        get() = prefs.getBoolean("cached_b2_on", false)
+        set(value) = prefs.edit().putBoolean("cached_b2_on", value).apply()
 
-    var cachedButton3State: String
-        get() = prefs.getString("cached_b3_state", if (cachedButton3On) "on" else "off") ?: "off"
-        set(value) {
-            prefs.edit().putString("cached_b3_state", value).apply()
-            prefs.edit().putBoolean("cached_b3", value == "on" || value == "loading").apply()
-        }
+    var cachedBtn3On: Boolean
+        get() = prefs.getBoolean("cached_b3_on", false)
+        set(value) = prefs.edit().putBoolean("cached_b3_on", value).apply()
 
-    var cachedButton4State: String
-        get() = prefs.getString("cached_b4_state", if (cachedButton4On) "on" else "off") ?: "off"
-        set(value) {
-            prefs.edit().putString("cached_b4_state", value).apply()
-            prefs.edit().putBoolean("cached_b4", value == "on" || value == "loading").apply()
-        }
+    var cachedBtn4On: Boolean
+        get() = prefs.getBoolean("cached_b4_on", false)
+        set(value) = prefs.edit().putBoolean("cached_b4_on", value).apply()
 
-    var cachedButton1On: Boolean
-        get() = prefs.getBoolean("cached_b1", false)
-        set(value) = prefs.edit().putBoolean("cached_b1", value).apply()
-
-    var cachedButton2On: Boolean
-        get() = prefs.getBoolean("cached_b2", false)
-        set(value) = prefs.edit().putBoolean("cached_b2", value).apply()
-
-    var cachedButton3On: Boolean
-        get() = prefs.getBoolean("cached_b3", false)
-        set(value) = prefs.edit().putBoolean("cached_b3", value).apply()
-
-    var cachedButton4On: Boolean
-        get() = prefs.getBoolean("cached_b4", false)
-        set(value) = prefs.edit().putBoolean("cached_b4", value).apply()
+    val isConfigured: Boolean
+        get() = serverUrl.isNotBlank() && token.isNotBlank()
 }
